@@ -1,0 +1,102 @@
+basePath: /
+definitions:
+  api.AuthRequest:
+    properties:
+      username:
+        type: string
+    type: object
+  api.AuthResponse:
+    properties:
+      is_operator:
+        type: boolean
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: suporte@zyron.local
+    name: Suporte Zyron
+  description: Backend do servidor de sinalização WebRTC e gerenciamento de fila de
+    suporte remoto P2P (Zyron Server).
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Zyron P2P Remote Support API
+  version: "1.0"
+paths:
+  /api/auth/check-profile:
+    post:
+      consumes:
+      - application/json
+      description: Valida se o usuário informado possui perfil de Operador de Suporte
+        ou Cliente comum via Active Directory.
+      parameters:
+      - description: Dados do usuário
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+      summary: Checa o perfil do usuário
+      tags:
+      - Autenticação
+  /healthz:
+    get:
+      description: Retorna o estado do servidor para orquestradores como Docker e
+        Kubernetes.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Servidor saudável
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Checagem de integridade (Healthcheck)
+      tags:
+      - Sistema
+  /ws:
+    get:
+      description: Abre o canal WebSocket para controle de presença, gerenciamento
+        de fila e troca de sinalização WebRTC (SDP Offer/Answer e ICE Candidates).
+      parameters:
+      - description: 'Nome de usuário do cliente ou operador (ex: DOMINIO\\usuario)'
+        in: query
+        name: username
+        required: true
+        type: string
+      - description: Indica se a conexão é de um operador de suporte (true/false)
+        in: query
+        name: is_operator
+        type: boolean
+      responses:
+        "101":
+          description: Switching Protocols para WebSocket
+          schema:
+            type: string
+        "400":
+          description: Username required
+          schema:
+            type: string
+      summary: Endpoint de Sinalização WebRTC e Fila P2P (WebSocket)
+      tags:
+      - WebSocket
+swagger: "2.0"

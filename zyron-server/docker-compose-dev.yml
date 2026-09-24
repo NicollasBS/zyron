@@ -1,0 +1,98 @@
+services:
+  zyron_db:
+    container_name: zyron_db
+    image: postgres:17-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "timezone=America/Sao_Paulo", "-c", "log_timezone=America/Sao_Paulo"]
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: "America/Sao_Paulo"
+      PGTZ: "America/Sao_Paulo"
+    ports:
+      - "${DEV_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - zyron_db_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zyron_dev_net
+
+  zyron_redis:
+    container_name: zyron_redis
+    image: redis:alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TZ: "America/Sao_Paulo"
+    ports:
+      - "${DEV_REDIS_PORT:-6379}:6379"
+    volumes:
+      - zyron_redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zyron_dev_net
+
+  zyron_api:
+    container_name: zyron_api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${CI_REGISTRY_IMAGE:-zyron_api}:${CI_COMMIT_REF_SLUG:-dev}
+    restart: unless-stopped
+    environment:
+      PORT: "${PORT:-8080}"
+      TZ: "America/Sao_Paulo"
+      DB_TIMEZONE: "America/Sao_Paulo"
+      DB_HOST: "${DB_HOST:-zyron_db}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_NAME: "${DB_NAME}"
+      DB_SSLMODE: "${DB_SSLMODE:-disable}"
+      REDIS_ADDR: "${REDIS_ADDR:-zyron_redis:6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_DB: "${REDIS_DB:-0}"
+      # Active Directory (LDAPS na porta 636)
+      AD_HOST: "${AD_HOST:-}"
+      AD_PORT: "${AD_PORT:-636}"
+      AD_USE_SSL: "${AD_USE_SSL:-true}"
+      AD_BASE_DN: "${AD_BASE_DN:-}"
+      AD_BIND_USER: "${AD_BIND_USER:-}"
+      AD_BIND_PASSWORD: "${AD_BIND_PASSWORD:-}"
+      AD_OPERATOR_GROUP: "${AD_OPERATOR_GROUP:-SG_SUPORTE_ATENDIMENTO}"
+      AD_MANAGER_GROUP: "${AD_MANAGER_GROUP:-SG_GERENCIA_ATENDIMENTO}"
+      AD_INSECURE_SKIP_VERIFY: "${AD_INSECURE_SKIP_VERIFY:-true}"
+    ports:
+      - "${DEV_APP_PORT:-8080}:8080"
+    depends_on:
+      zyron_db:
+        condition: service_healthy
+      zyron_redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - zyron_dev_net
+
+networks:
+  zyron_dev_net:
+    driver: bridge
+
+volumes:
+  zyron_db_dev_data:
+  zyron_redis_dev_data:

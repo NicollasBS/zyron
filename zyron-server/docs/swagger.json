@@ -1,0 +1,149 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Backend do servidor de sinalização WebRTC e gerenciamento de fila de suporte remoto P2P (Zyron Server).",
+        "title": "Zyron P2P Remote Support API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "Suporte Zyron",
+            "email": "suporte@zyron.local"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/api/auth/check-profile": {
+            "post": {
+                "description": "Valida se o usuário informado possui perfil de Operador de Suporte ou Cliente comum via Active Directory.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Checa o perfil do usuário",
+                "parameters": [
+                    {
+                        "description": "Dados do usuário",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.AuthRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.AuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "description": "Retorna o estado do servidor para orquestradores como Docker e Kubernetes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sistema"
+                ],
+                "summary": "Checagem de integridade (Healthcheck)",
+                "responses": {
+                    "200": {
+                        "description": "Servidor saudável",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ws": {
+            "get": {
+                "description": "Abre o canal WebSocket para controle de presença, gerenciamento de fila e troca de sinalização WebRTC (SDP Offer/Answer e ICE Candidates).",
+                "tags": [
+                    "WebSocket"
+                ],
+                "summary": "Endpoint de Sinalização WebRTC e Fila P2P (WebSocket)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nome de usuário do cliente ou operador (ex: DOMINIO\\\\usuario)",
+                        "name": "username",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Indica se a conexão é de um operador de suporte (true/false)",
+                        "name": "is_operator",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols para WebSocket",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Username required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.AuthRequest": {
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.AuthResponse": {
+            "type": "object",
+            "properties": {
+                "is_operator": {
+                    "type": "boolean"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

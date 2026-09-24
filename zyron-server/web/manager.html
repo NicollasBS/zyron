@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zyron - Painel Gerencial de Atendimento</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.6); border-radius: 9999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.9); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- ================= TELA DE LOGIN ================= -->
+  <div id="loginSection" class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+      <div class="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Logotipo & Título -->
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 mx-auto flex items-center justify-center mb-3 shadow-inner">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <h1 class="text-2xl font-extrabold text-white tracking-tight">ZYRON</h1>
+        <p class="text-xs text-slate-400 mt-1 font-medium">Painel Gerencial de Atendimento</p>
+      </div>
+
+      <!-- Badge Informativo do Grupo AD -->
+      <div class="bg-indigo-950/40 border border-indigo-500/20 rounded-xl p-3 mb-6 text-center text-xs text-indigo-300">
+        <span class="block text-[11px] font-semibold uppercase tracking-wider text-indigo-400 mb-0.5">Acesso Restrito</span>
+        <span>Requer permissão no grupo Active Directory: <strong class="text-white">SG_GERENCIA_ATENDIMENTO</strong></span>
+      </div>
+
+      <!-- Mensagem de Erro de Login -->
+      <div id="loginError" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 mb-4 text-xs text-rose-300 text-center"></div>
+
+      <!-- Formulário de Login -->
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Usuário de Rede (AD)</label>
+          <input
+            type="text"
+            id="loginUsername"
+            required
+            placeholder="CORP\gestor ou gestor"
+            class="w-full bg-slate-950/80 border border-slate-700/80 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition"
+          >
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Senha de Rede</label>
+          <input
+            type="password"
+            id="loginPassword"
+            required
+            placeholder="••••••••"
+            class="w-full bg-slate-950/80 border border-slate-700/80 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition"
+          >
+        </div>
+
+        <button
+          type="submit"
+          id="loginSubmitBtn"
+          class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 transition duration-150 flex items-center justify-center space-x-2"
+        >
+          <span>Entrar no Painel</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= DASHBOARD PRINCIPAL ================= -->
+  <div id="dashboardSection" class="hidden flex-1 flex flex-col">
+    <!-- Barra Superior / Header -->
+    <header class="bg-slate-900/90 border-b border-slate-800/80 backdrop-blur sticky top-0 z-40 px-6 py-3.5">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <!-- Logo e Título -->
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-sm shadow-inner">
+            Z
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-base font-bold text-white tracking-tight">Zyron</span>
+              <span class="text-[10px] font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">Gerenciador</span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-none">Central de Monitoramento e Indicadores</p>
+          </div>
+        </div>
+
+        <!-- Ações do Topo: Auto-refresh, Status e Usuário -->
+        <div class="flex items-center space-x-4">
+          <!-- Indicador de Atualização Automática -->
+          <div class="hidden sm:flex items-center space-x-2 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl text-xs text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Ao vivo (5s)</span>
+            <span id="lastSyncTime" class="text-[10px] text-slate-400 font-mono ml-1"></span>
+            <button id="refreshNowBtn" title="Atualizar agora com bypass de cache" class="ml-1 text-slate-400 hover:text-white transition">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Usuário Logado -->
+          <div class="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-xl text-xs">
+            <div class="w-5 h-5 rounded-full bg-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-[10px]">
+              G
+            </div>
+            <span id="currentUserName" class="text-white font-medium max-w-[140px] truncate">Gestor</span>
+          </div>
+
+          <!-- Botão Sair -->
+          <button
+            id="logoutBtn"
+            class="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-xl transition"
+          >
+            Sair
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Conteúdo do Dashboard -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6">
+
+      <!-- ================= 1. CARDS DE KPI (MÉTRICAS PRINCIPAIS) ================= -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <!-- Card 1: Fila de Espera -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Pessoas na Fila</span>
+            <span id="queueBadge" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          </div>
+          <div class="text-3xl font-extrabold text-white" id="kpiQueueCount">0</div>
+          <div class="text-[11px] text-slate-400 mt-1">aguardando atendimento</div>
+        </div>
+
+        <!-- Card 2: Operadores Disponíveis -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Operadores Livres</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          </div>
+          <div class="text-3xl font-extrabold text-emerald-400" id="kpiAvailOpsCount">0</div>
+          <div class="text-[11px] text-slate-400 mt-1" id="kpiTotalOpsCount">de 0 conectados</div>
+        </div>
+
+        <!-- Card 3: Chamadas em Andamento -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Em Andamento</span>
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          </div>
+          <div class="text-3xl font-extrabold text-amber-300" id="kpiActiveCallsCount">0</div>
+          <div class="text-[11px] text-slate-400 mt-1">sessões ativas agora</div>
+        </div>
+
+        <!-- Card 4: Total de Chamados -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Chamados Hoje</span>
+            <span class="text-indigo-400">📊</span>
+          </div>
+          <div class="text-3xl font-extrabold text-indigo-300" id="kpiTodayCallsCount">0</div>
+          <div class="text-[11px] text-slate-400 mt-1" id="kpiTotalCallsCount">Total geral: 0</div>
+        </div>
+
+        <!-- Card 5: Tempo Médio de Atendimento (TMA) -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>TMA Médio</span>
+            <span class="text-slate-400">⏱️</span>
+          </div>
+          <div class="text-3xl font-extrabold text-white font-mono" id="kpiTMA">00:00</div>
+          <div class="text-[11px] text-slate-400 mt-1">tempo de suporte</div>
+        </div>
+
+        <!-- Card 6: Avaliação / Satisfação -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>Satisfação</span>
+            <span class="text-amber-400">★</span>
+          </div>
+          <div class="text-3xl font-extrabold text-amber-400" id="kpiAvgRating">0.0</div>
+          <div class="text-[11px] text-slate-400 mt-1" id="kpiRatedCount">0 avaliações</div>
+        </div>
+      </div>
+
+      <!-- ================= 2. NAVEGAÇÃO POR ABAS ================= -->
+      <div class="flex items-center space-x-2 border-b border-slate-800 pb-2">
+        <button
+          onclick="switchTab('realtime')"
+          id="tabBtn-realtime"
+          class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold transition bg-indigo-600 text-white"
+        >
+          Tempo Real (Ao Vivo)
+        </button>
+        <button
+          onclick="switchTab('analytics')"
+          id="tabBtn-analytics"
+          class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold transition text-slate-400 hover:text-white hover:bg-slate-900"
+        >
+          Relatórios & Comparativos
+        </button>
+        <button
+          onclick="switchTab('sessions')"
+          id="tabBtn-sessions"
+          class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold transition text-slate-400 hover:text-white hover:bg-slate-900"
+        >
+          Todos os Chamados
+        </button>
+      </div>
+
+      <!-- ================= ABA 1: TEMPO REAL ================= -->
+      <div id="tabContent-realtime" class="space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- Fila de Espera Atual -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-ping"></span>
+                <h3 class="text-sm font-bold text-white">Fila de Atendimento em Tempo Real</h3>
+              </div>
+              <span id="queueBadgeTotal" class="text-xs text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full font-semibold">0 aguardando</span>
+            </div>
+
+            <div class="overflow-x-auto max-h-80 custom-scrollbar">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="text-slate-400 border-b border-slate-800">
+                    <th class="pb-2 font-medium">Pos.</th>
+                    <th class="pb-2 font-medium">Solicitante</th>
+                    <th class="pb-2 font-medium">IP</th>
+                    <th class="pb-2 font-medium text-right">Aguardando</th>
+                  </tr>
+                </thead>
+                <tbody id="queueTableBody" class="divide-y divide-slate-800/60">
+                  <tr>
+                    <td colspan="4" class="py-6 text-center text-slate-500">Nenhum chamado na fila neste momento.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Operadores Conectados -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <h3 class="text-sm font-bold text-white">Status dos Operadores</h3>
+              </div>
+              <span id="opsBadgeTotal" class="text-xs text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full font-semibold">0 operadores</span>
+            </div>
+
+            <div class="overflow-x-auto max-h-80 custom-scrollbar">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="text-slate-400 border-b border-slate-800">
+                    <th class="pb-2 font-medium">Operador</th>
+                    <th class="pb-2 font-medium">Usuário</th>
+                    <th class="pb-2 font-medium text-right">Disponibilidade</th>
+                  </tr>
+                </thead>
+                <tbody id="operatorsTableBody" class="divide-y divide-slate-800/60">
+                  <tr>
+                    <td colspan="3" class="py-6 text-center text-slate-500">Nenhum operador conectado no momento.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sessões em Andamento -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+              <h3 class="text-sm font-bold text-white">Atendimentos Ativos Neste Momento</h3>
+            </div>
+            <span id="activeSessionsCount" class="text-xs text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full font-semibold">0 sessões</span>
+          </div>
+
+          <div class="overflow-x-auto max-h-80 custom-scrollbar">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800">
+                  <th class="pb-2 font-medium">Ticket ID</th>
+                  <th class="pb-2 font-medium">Solicitante</th>
+                  <th class="pb-2 font-medium">Operador</th>
+                  <th class="pb-2 font-medium">IP Cliente</th>
+                  <th class="pb-2 font-medium text-right">Duração Atual</th>
+                </tr>
+              </thead>
+              <tbody id="activeSessionsTableBody" class="divide-y divide-slate-800/60">
+                <tr>
+                  <td colspan="5" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ABA 2: RELATÓRIOS & COMPARATIVOS ================= -->
+      <div id="tabContent-analytics" class="hidden space-y-6">
+        <!-- Linha 1 de Gráficos: Atendimentos por Operador + Satisfação -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-white mb-1">Volume de Atendimentos por Operador</h3>
+            <p class="text-xs text-slate-400 mb-4">Comparativo de total de chamados finalizados por atendente</p>
+            <div class="h-64 relative">
+              <canvas id="chartOperators"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-white mb-1">Distribuição de Avaliações dos Usuários</h3>
+            <p class="text-xs text-slate-400 mb-4">Classificação por estrelas recebidas (1 a 5 estrelas)</p>
+            <div class="h-64 relative">
+              <canvas id="chartRatings"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Linha 2 de Gráficos: Volume Diário + Picos de Horário -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-white mb-1">Tendência de Atendimentos por Dia</h3>
+            <p class="text-xs text-slate-400 mb-4">Volume diário de chamados nos últimos 14 dias</p>
+            <div class="h-64 relative">
+              <canvas id="chartDaily"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-white mb-1">Picos de Horário (Demanda)</h3>
+            <p class="text-xs text-slate-400 mb-4">Distribuição de chamados abertos por hora do dia</p>
+            <div class="h-64 relative">
+              <canvas id="chartHourly"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabela Comparativa de Produtividade dos Operadores -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-1">Tabela Comparativa de Performance</h3>
+          <p class="text-xs text-slate-400 mb-4">Ranking detalhado de produtividade, TMA e índice de satisfação</p>
+
+          <div class="overflow-x-auto custom-scrollbar">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800">
+                  <th class="pb-2 font-medium">Operador</th>
+                  <th class="pb-2 font-medium">Usuário</th>
+                  <th class="pb-2 font-medium text-center">Total de Chamados</th>
+                  <th class="pb-2 font-medium text-center">TMA (Tempo Médio)</th>
+                  <th class="pb-2 font-medium text-center">Tempo Total</th>
+                  <th class="pb-2 font-medium text-center">Avaliação Média</th>
+                </tr>
+              </thead>
+              <tbody id="operatorPerformanceTableBody" class="divide-y divide-slate-800/60">
+                <tr>
+                  <td colspan="6" class="py-6 text-center text-slate-500">Nenhum dado registrado ainda.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ABA 3: TODOS OS CHAMADOS ================= -->
+      <div id="tabContent-sessions" class="hidden space-y-4">
+        <!-- Filtros e Busca -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-3 flex-1">
+            <!-- Busca Geral -->
+            <div class="relative min-w-[220px]">
+              <input
+                type="text"
+                id="searchFilter"
+                placeholder="Buscar por solicitante, operador, ticket..."
+                class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none transition"
+              >
+            </div>
+
+            <!-- Filtro de Nota -->
+            <select
+              id="ratingFilter"
+              class="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Todas as Notas</option>
+              <option value="5">★★★★★ (5 Estrelas)</option>
+              <option value="4">★★★★☆ (4 Estrelas)</option>
+              <option value="3">★★★☆☆ (3 Estrelas)</option>
+              <option value="2">★★☆☆☆ (2 Estrelas)</option>
+              <option value="1">★☆☆☆☆ (1 Estrela)</option>
+            </select>
+
+            <!-- Filtro de Período -->
+            <select
+              id="periodFilter"
+              class="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">Todo o Histórico</option>
+              <option value="today">Apenas Hoje</option>
+              <option value="7days">Últimos 7 dias</option>
+              <option value="30days">Últimos 30 dias</option>
+            </select>
+
+            <button
+              id="applyFiltersBtn"
+              class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition"
+            >
+              Filtrar
+            </button>
+          </div>
+
+          <!-- Botão Exportar CSV -->
+          <div>
+            <a
+              id="exportCsvBtn"
+              href="/api/manager/export"
+              target="_blank"
+              class="bg-slate-800 hover:bg-slate-700 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition inline-flex items-center space-x-1.5"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Exportar CSV</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Tabela de Histórico de Chamados -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-sm">
+          <div class="overflow-x-auto custom-scrollbar">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800">
+                  <th class="pb-2 font-medium">Data / Hora</th>
+                  <th class="pb-2 font-medium">Ticket ID</th>
+                  <th class="pb-2 font-medium">Solicitante</th>
+                  <th class="pb-2 font-medium">Operador</th>
+                  <th class="pb-2 font-medium">IP</th>
+                  <th class="pb-2 font-medium text-center">Duração</th>
+                  <th class="pb-2 font-medium text-center">Avaliação</th>
+                </tr>
+              </thead>
+              <tbody id="sessionsTableBody" class="divide-y divide-slate-800/60">
+                <tr>
+                  <td colspan="7" class="py-8 text-center text-slate-500">Carregando histórico de chamados...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Paginação -->
+          <div class="flex items-center justify-between border-t border-slate-800 pt-4 mt-4 text-xs text-slate-400">
+            <span id="paginationInfo">Mostrando 0 de 0</span>
+            <div class="flex items-center space-x-2">
+              <button
+                id="prevPageBtn"
+                disabled
+                class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+              >
+                Anterior
+              </button>
+              <button
+                id="nextPageBtn"
+                disabled
+                class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ================= JAVASCRIPT DA APLICAÇÃO ================= -->
+  <script>
+    let activeTab = 'realtime';
+    let refreshInterval = null;
+    let sessionsOffset = 0;
+    const sessionsLimit = 25;
+    let totalSessionsCount = 0;
+
+    // Instâncias do Chart.js
+    let chartOperatorsInstance = null;
+    let chartRatingsInstance = null;
+    let chartDailyInstance = null;
+    let chartHourlyInstance = null;
+
+    // Formata segundos em MM:SS ou HH:MM:SS
+    function formatDuration(sec) {
+      if (!sec || isNaN(sec)) return '00:00';
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      if (m >= 60) {
+        const h = Math.floor(m / 60);
+        const remM = m % 60;
+        return `${String(h).padStart(2, '0')}:${String(remM).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      }
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // Formata data ISO em DD/MM/AAAA HH:MM
+    function formatDate(isoStr) {
+      if (!isoStr) return '-';
+      try {
+        const d = new Date(isoStr);
+        return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        return isoStr;
+      }
+    }
+
+    // Renderiza estrelas em HTML
+    function renderStars(rating) {
+      if (!rating || rating <= 0) return '<span class="text-slate-600 font-mono text-[11px]">Sem nota</span>';
+      let html = '<div class="inline-flex items-center text-amber-400 text-xs">';
+      for (let i = 1; i <= 5; i++) {
+        html += i <= rating ? '★' : '<span class="text-slate-700">★</span>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // Alterna abas
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white');
+        btn.classList.add('text-slate-400', 'hover:text-white', 'hover:bg-slate-900');
+      });
+      const activeBtn = document.getElementById(`tabBtn-${tab}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-slate-400', 'hover:text-white', 'hover:bg-slate-900');
+        activeBtn.classList.add('bg-indigo-600', 'text-white');
+      }
+
+      document.getElementById('tabContent-realtime').classList.add('hidden');
+      document.getElementById('tabContent-analytics').classList.add('hidden');
+      document.getElementById('tabContent-sessions').classList.add('hidden');
+
+      document.getElementById(`tabContent-${tab}`).classList.remove('hidden');
+
+      if (tab === 'analytics') {
+        loadAnalyticsData();
+      } else if (tab === 'sessions') {
+        loadSessionsData();
+      }
+    }
+
+    // Checa autenticação inicial
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/manager/check-auth');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated) {
+            showDashboard(data.user);
+            return;
+          }
+        }
+      } catch (e) {}
+      showLogin();
+    }
+
+    function showLogin() {
+      document.getElementById('loginSection').classList.remove('hidden');
+      document.getElementById('dashboardSection').classList.add('hidden');
+      if (refreshInterval) clearInterval(refreshInterval);
+    }
+
+    function showDashboard(user) {
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('dashboardSection').classList.remove('hidden');
+      if (user && user.display_name) {
+        document.getElementById('currentUserName').textContent = user.display_name;
+      }
+      loadRealtimeData();
+      loadAnalyticsData(); // Carrega imediatamente os dados analíticos e TMA/satisfação
+
+      if (!refreshInterval) {
+        let tickCounter = 0;
+        refreshInterval = setInterval(() => {
+          tickCounter++;
+          loadRealtimeData();
+
+          // Atualiza analytics a cada 30s se estiver na aba de analytics (6 ticks de 5s)
+          // ou a cada 60s se estiver nas outras abas (12 ticks de 5s)
+          if (activeTab === 'analytics' && tickCounter % 6 === 0) {
+            loadAnalyticsData();
+          } else if (tickCounter % 12 === 0) {
+            loadAnalyticsData();
+          }
+        }, 5000);
+      }
+    }
+
+    // Submissão do Formulário de Login
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errBox = document.getElementById('loginError');
+      errBox.classList.add('hidden');
+      const submitBtn = document.getElementById('loginSubmitBtn');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>Verificando...</span>';
+
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      try {
+        const res = await fetch('/api/manager/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showDashboard(data.user);
+        } else {
+          errBox.textContent = data.error || 'Credenciais inválidas ou acesso não autorizado.';
+          errBox.classList.remove('hidden');
+        }
+      } catch (err) {
+        errBox.textContent = 'Erro ao conectar ao servidor. Tente novamente.';
+        errBox.classList.remove('hidden');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>Entrar no Painel</span>';
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/manager/logout', { method: 'POST' });
+      } catch (e) {}
+      showLogin();
+    });
+
+    // Botão Atualizar Agora (com bypass forçado de cache)
+    document.getElementById('refreshNowBtn').addEventListener('click', () => {
+      const btn = document.getElementById('refreshNowBtn');
+      btn.classList.add('animate-spin');
+      setTimeout(() => btn.classList.remove('animate-spin'), 700);
+      loadRealtimeData();
+      loadAnalyticsData(true); // Força refresh e invalidação de cache
+      if (activeTab === 'sessions') loadSessionsData();
+    });
+
+    // 1. Carrega dados de Tempo Real
+    async function loadRealtimeData() {
+      try {
+        const res = await fetch('/api/manager/realtime');
+        if (res.status === 401) {
+          showLogin();
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Atualiza KPIs
+        document.getElementById('kpiQueueCount').textContent = data.queue_length || 0;
+        const availCount = (data.available_operators || []).length;
+        const busyCount = (data.busy_operators || []).length;
+        const totalOps = availCount + busyCount;
+        document.getElementById('kpiAvailOpsCount').textContent = availCount;
+        document.getElementById('kpiTotalOpsCount').textContent = `de ${totalOps} conectados`;
+
+        const activeSessions = data.active_sessions || [];
+        document.getElementById('kpiActiveCallsCount').textContent = activeSessions.length;
+        document.getElementById('activeSessionsCount').textContent = `${activeSessions.length} sessões`;
+
+        // Tabela da Fila
+        const queueTable = document.getElementById('queueTableBody');
+        const queueTickets = data.queue_tickets || [];
+        document.getElementById('queueBadgeTotal').textContent = `${queueTickets.length} aguardando`;
+
+        if (queueTickets.length === 0) {
+          queueTable.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">Nenhum chamado na fila neste momento.</td></tr>';
+        } else {
+          let html = '';
+          const now = Date.now();
+          queueTickets.forEach((t, i) => {
+            let waitSec = 0;
+            if (t.created_at) {
+              waitSec = Math.floor((now - new Date(t.created_at).getTime()) / 1000);
+              if (waitSec < 0) waitSec = 0;
+            }
+            html += `
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-2.5 font-bold text-indigo-400">${t.position || (i + 1)}º</td>
+                <td class="py-2.5">
+                  <div class="font-semibold text-white">${t.client_name || t.client_user}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">${t.client_user}</div>
+                </td>
+                <td class="py-2.5 font-mono text-slate-400">${t.client_ip || '-'}</td>
+                <td class="py-2.5 text-right font-mono text-amber-300 font-semibold">${formatDuration(waitSec)}</td>
+              </tr>
+            `;
+          });
+          queueTable.innerHTML = html;
+        }
+
+        // Tabela de Operadores
+        const opsTable = document.getElementById('operatorsTableBody');
+        const allOps = [...(data.available_operators || []), ...(data.busy_operators || [])];
+        document.getElementById('opsBadgeTotal').textContent = `${allOps.length} operadores`;
+
+        if (allOps.length === 0) {
+          opsTable.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-500">Nenhum operador conectado no momento.</td></tr>';
+        } else {
+          let html = '';
+          allOps.forEach(op => {
+            const badge = op.is_busy
+              ? `<span class="bg-amber-500/15 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded-full text-[10px] font-semibold">Em Atendimento (${op.active_with || 'cliente'})</span>`
+              : `<span class="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-semibold">Disponível</span>`;
+
+            html += `
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-2.5 font-semibold text-white">${op.display_name || op.username}</td>
+                <td class="py-2.5 font-mono text-slate-400">${op.username}</td>
+                <td class="py-2.5 text-right">${badge}</td>
+              </tr>
+            `;
+          });
+          opsTable.innerHTML = html;
+        }
+
+        // Tabela de Sessões Ativas
+        const sessionsTable = document.getElementById('activeSessionsTableBody');
+        if (activeSessions.length === 0) {
+          sessionsTable.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td></tr>';
+        } else {
+          let html = '';
+          activeSessions.forEach(s => {
+            html += `
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-2.5 font-mono text-[11px] text-slate-400 max-w-[120px] truncate" title="${s.ticket_id}">${s.ticket_id.substring(0, 8)}...</td>
+                <td class="py-2.5">
+                  <div class="font-semibold text-white">${s.client_display_name}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">${s.client_username}</div>
+                </td>
+                <td class="py-2.5">
+                  <div class="font-semibold text-emerald-400">${s.operator_display_name}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">${s.operator_username}</div>
+                </td>
+                <td class="py-2.5 font-mono text-slate-400">${s.client_ip || '-'}</td>
+                <td class="py-2.5 text-right font-mono text-emerald-400 font-bold">${formatDuration(s.duration_seconds)}</td>
+              </tr>
+            `;
+          });
+          sessionsTable.innerHTML = html;
+        }
+
+        // Atualiza horário da última sincronização
+        const syncSpan = document.getElementById('lastSyncTime');
+        if (syncSpan) {
+          syncSpan.textContent = new Date().toLocaleTimeString('pt-BR');
+        }
+
+      } catch (e) {
+        console.warn('Erro ao carregar tempo real:', e);
+      }
+    }
+
+    // 2. Carrega Dados Analíticos e Renderiza Gráficos (com suporte a cache e forceRefresh)
+    async function loadAnalyticsData(forceRefresh = false) {
+      try {
+        const url = forceRefresh ? '/api/manager/analytics?refresh=true' : '/api/manager/analytics';
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Atualiza KPIs cumulativos
+        document.getElementById('kpiTodayCallsCount').textContent = data.today_sessions || 0;
+        document.getElementById('kpiTotalCallsCount').textContent = `Total geral: ${data.total_sessions || 0}`;
+        document.getElementById('kpiTMA').textContent = formatDuration(data.avg_duration_seconds);
+        document.getElementById('kpiAvgRating').textContent = (data.avg_rating || 0).toFixed(1);
+        document.getElementById('kpiRatedCount').textContent = `${data.rated_calls_count || 0} avaliações`;
+
+        // Renderiza Gráfico de Operadores
+        renderChartOperators(data.operators || []);
+
+        // Renderiza Gráfico de Satisfação
+        renderChartRatings(data.rating_counts || {});
+
+        // Renderiza Gráfico Diário
+        renderChartDaily(data.daily_stats || []);
+
+        // Renderiza Gráfico Horário
+        renderChartHourly(data.hourly_distribution || []);
+
+        // Tabela Comparativa de Operadores
+        renderOperatorPerformanceTable(data.operators || []);
+
+      } catch (e) {
+        console.warn('Erro ao carregar analytics:', e);
+      }
+    }
+
+    function renderChartOperators(operators) {
+      const ctx = document.getElementById('chartOperators').getContext('2d');
+      if (chartOperatorsInstance) chartOperatorsInstance.destroy();
+
+      const labels = operators.map(o => o.operator_display_name || o.operator_username);
+      const calls = operators.map(o => o.total_calls);
+
+      chartOperatorsInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels.length ? labels : ['Sem dados'],
+          datasets: [{
+            label: 'Chamados Atendidos',
+            data: calls.length ? calls : [0],
+            backgroundColor: 'rgba(99, 102, 241, 0.8)',
+            borderColor: 'rgba(99, 102, 241, 1)',
+            borderRadius: 8,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(51, 65, 85, 0.4)' } }
+          }
+        }
+      });
+    }
+
+    function renderChartRatings(counts) {
+      const ctx = document.getElementById('chartRatings').getContext('2d');
+      if (chartRatingsInstance) chartRatingsInstance.destroy();
+
+      const data = [counts['5'] || 0, counts['4'] || 0, counts['3'] || 0, counts['2'] || 0, counts['1'] || 0];
+
+      chartRatingsInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['5 Estrelas', '4 Estrelas', '3 Estrelas', '2 Estrelas', '1 Estrela'],
+          datasets: [{
+            data: data,
+            backgroundColor: [
+              'rgba(34, 197, 94, 0.85)',
+              'rgba(59, 130, 246, 0.85)',
+              'rgba(234, 179, 8, 0.85)',
+              'rgba(249, 115, 22, 0.85)',
+              'rgba(239, 68, 68, 0.85)'
+            ],
+            borderColor: '#0f172a',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 11 } } }
+          }
+        }
+      });
+    }
+
+    function renderChartDaily(dailyStats) {
+      const ctx = document.getElementById('chartDaily').getContext('2d');
+      if (chartDailyInstance) chartDailyInstance.destroy();
+
+      const labels = dailyStats.map(d => d.date ? d.date.substring(5) : '');
+      const values = dailyStats.map(d => d.total_calls);
+
+      chartDailyInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels.length ? labels : ['Hoje'],
+          datasets: [{
+            label: 'Atendimentos',
+            data: values.length ? values : [0],
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.15)',
+            tension: 0.3,
+            fill: true,
+            pointBackgroundColor: '#38bdf8',
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(51, 65, 85, 0.4)' } }
+          }
+        }
+      });
+    }
+
+    function renderChartHourly(hourlyStats) {
+      const ctx = document.getElementById('chartHourly').getContext('2d');
+      if (chartHourlyInstance) chartHourlyInstance.destroy();
+
+      const labels = [];
+      const values = [];
+      // Filtra horários comerciais relevantes (das 07h às 20h)
+      for (let h = 7; h <= 19; h++) {
+        labels.push(`${String(h).padStart(2, '0')}h`);
+        const found = hourlyStats.find(item => item.hour === h);
+        values.push(found ? found.total_calls : 0);
+      }
+
+      chartHourlyInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Chamados por Hora',
+            data: values,
+            backgroundColor: 'rgba(168, 85, 247, 0.75)',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#94a3b8', font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(51, 65, 85, 0.4)' } }
+          }
+        }
+      });
+    }
+
+    function renderOperatorPerformanceTable(operators) {
+      const tbody = document.getElementById('operatorPerformanceTableBody');
+      if (!operators || operators.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500">Nenhum operador com atendimentos concluídos.</td></tr>';
+        return;
+      }
+
+      let html = '';
+      operators.forEach(op => {
+        html += `
+          <tr class="hover:bg-slate-800/40">
+            <td class="py-2.5 font-semibold text-white">${op.operator_display_name}</td>
+            <td class="py-2.5 font-mono text-slate-400">${op.operator_username}</td>
+            <td class="py-2.5 text-center font-bold text-indigo-400">${op.total_calls}</td>
+            <td class="py-2.5 text-center font-mono text-slate-300">${formatDuration(op.avg_duration_seconds)}</td>
+            <td class="py-2.5 text-center font-mono text-slate-400">${formatDuration(op.total_duration_seconds)}</td>
+            <td class="py-2.5 text-center font-bold text-amber-400">${op.avg_rating > 0 ? op.avg_rating.toFixed(1) + ' ★' : '-'}</td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }
+
+    // 3. Carrega Histórico de Chamados
+    async function loadSessionsData() {
+      const search = document.getElementById('searchFilter').value.trim();
+      const rating = document.getElementById('ratingFilter').value;
+      const period = document.getElementById('periodFilter').value;
+
+      let url = `/api/manager/sessions?limit=${sessionsLimit}&offset=${sessionsOffset}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (rating) url += `&rating=${rating}`;
+
+      const now = new Date();
+      if (period === 'today') {
+        const todayStr = now.toISOString().split('T')[0];
+        url += `&start_date=${todayStr}&end_date=${todayStr}`;
+      } else if (period === '7days') {
+        const d7 = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
+        url += `&start_date=${d7}`;
+      } else if (period === '30days') {
+        const d30 = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+        url += `&start_date=${d30}`;
+      }
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const sessions = data.sessions || [];
+        totalSessionsCount = data.total || 0;
+
+        const tbody = document.getElementById('sessionsTableBody');
+        if (sessions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500">Nenhum chamado encontrado com os filtros selecionados.</td></tr>';
+        } else {
+          let html = '';
+          sessions.forEach(s => {
+            html += `
+              <tr class="hover:bg-slate-800/40">
+                <td class="py-3 font-mono text-[11px] text-slate-400">${formatDate(s.start_time)}</td>
+                <td class="py-3 font-mono text-[11px] text-slate-400 max-w-[110px] truncate" title="${s.ticket_id}">${s.ticket_id.substring(0, 8)}...</td>
+                <td class="py-3">
+                  <div class="font-semibold text-white">${s.client_display_name || s.client_username}</div>
+                  <div class="text-[10px] text-slate-500 font-mono">${s.client_username}</div>
+                </td>
+                <td class="py-3">
+                  <div class="font-semibold text-emerald-400">${s.operator_display_name || s.operator_username}</div>
+                  <div class="text-[10px] text-slate-500 font-mono">${s.operator_username}</div>
+                </td>
+                <td class="py-3 font-mono text-slate-400">${s.client_ip || '-'}</td>
+                <td class="py-3 text-center font-mono font-bold text-slate-300">${formatDuration(s.duration_seconds)}</td>
+                <td class="py-3 text-center">${renderStars(s.rating)}</td>
+              </tr>
+            `;
+          });
+          tbody.innerHTML = html;
+        }
+
+        // Atualiza paginação
+        const start = totalSessionsCount === 0 ? 0 : sessionsOffset + 1;
+        const end = Math.min(sessionsOffset + sessionsLimit, totalSessionsCount);
+        document.getElementById('paginationInfo').textContent = `Mostrando ${start} - ${end} de ${totalSessionsCount}`;
+
+        document.getElementById('prevPageBtn').disabled = sessionsOffset === 0;
+        document.getElementById('nextPageBtn').disabled = sessionsOffset + sessionsLimit >= totalSessionsCount;
+
+      } catch (e) {
+        console.warn('Erro ao carregar chamados:', e);
+      }
+    }
+
+    let searchDebounceTimeout = null;
+    document.getElementById('searchFilter').addEventListener('input', () => {
+      clearTimeout(searchDebounceTimeout);
+      searchDebounceTimeout = setTimeout(() => {
+        sessionsOffset = 0;
+        loadSessionsData();
+      }, 350);
+    });
+
+    document.getElementById('searchFilter').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(searchDebounceTimeout);
+        sessionsOffset = 0;
+        loadSessionsData();
+      }
+    });
+
+    document.getElementById('ratingFilter').addEventListener('change', () => {
+      sessionsOffset = 0;
+      loadSessionsData();
+    });
+
+    document.getElementById('periodFilter').addEventListener('change', () => {
+      sessionsOffset = 0;
+      loadSessionsData();
+    });
+
+    document.getElementById('applyFiltersBtn').addEventListener('click', () => {
+      clearTimeout(searchDebounceTimeout);
+      sessionsOffset = 0;
+      loadSessionsData();
+    });
+
+    document.getElementById('prevPageBtn').addEventListener('click', () => {
+      if (sessionsOffset >= sessionsLimit) {
+        sessionsOffset -= sessionsLimit;
+        loadSessionsData();
+      }
+    });
+
+    document.getElementById('nextPageBtn').addEventListener('click', () => {
+      if (sessionsOffset + sessionsLimit < totalSessionsCount) {
+        sessionsOffset += sessionsLimit;
+        loadSessionsData();
+      }
+    });
+
+    // Inicialização
+    checkAuth();
+  </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.git
+.github
+.gitignore
+.gemini
+*.exe
+*.log
+tmp
+.vscode
+.idea
