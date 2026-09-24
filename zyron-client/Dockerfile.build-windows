@@ -1,5 +1,8 @@
 # Multi-stage Docker builder para compilar Zyron Client (Wails v2 Windows x64) no Linux
-FROM golang:1.22-bookworm AS builder
+FROM golang:bookworm AS builder
+
+# Habilita download automático de toolchain Go caso necessário
+ENV GOTOOLCHAIN=auto
 
 # Instala dependências de cross-compilação para Windows (MinGW-w64), Node.js e Git
 RUN apt-get update && apt-get install -y --no-install-recommends \
