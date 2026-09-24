@@ -6,12 +6,20 @@ export function CheckProfile(arg1, arg2) {
   return window['go']['main']['App']['CheckProfile'](arg1, arg2);
 }
 
+export function CloseWindow() {
+  return window['go']['main']['App']['CloseWindow']();
+}
+
 export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
 export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
+}
+
+export function IsWindowMaximised() {
+  return window['go']['main']['App']['IsWindowMaximised']();
 }
 
 export function MinimizeWindow() {
@@ -28,4 +36,8 @@ export function SetFloatingMode(arg1) {
 
 export function SetServerURL(arg1) {
   return window['go']['main']['App']['SetServerURL'](arg1);
+}
+
+export function ToggleMaximizeWindow() {
+  return window['go']['main']['App']['ToggleMaximizeWindow']();
 }

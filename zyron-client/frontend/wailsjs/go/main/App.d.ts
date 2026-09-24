@@ -6,9 +6,13 @@ import {system} from '../models';
 
 export function CheckProfile(arg1:string,arg2:string):Promise<main.CheckProfileResponse>;
 
+export function CloseWindow():Promise<void>;
+
 export function GetConfig():Promise<config.Config>;
 
 export function GetSystemInfo():Promise<system.SystemInfo>;
+
+export function IsWindowMaximised():Promise<boolean>;
 
 export function MinimizeWindow():Promise<void>;
 
@@ -17,3 +21,5 @@ export function RestoreAndFocusWindow():Promise<void>;
 export function SetFloatingMode(arg1:boolean):Promise<void>;
 
 export function SetServerURL(arg1:string):Promise<boolean|string>;
+
+export function ToggleMaximizeWindow():Promise<void>;

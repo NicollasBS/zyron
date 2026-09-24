@@ -135,6 +135,30 @@ func (a *App) MinimizeWindow() {
 	runtime.WindowMinimise(a.ctx)
 }
 
+// ToggleMaximizeWindow alterna entre maximizar e restaurar a janela
+func (a *App) ToggleMaximizeWindow() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowToggleMaximise(a.ctx)
+}
+
+// IsWindowMaximised verifica se a janela está atualmente maximizada
+func (a *App) IsWindowMaximised() bool {
+	if a.ctx == nil {
+		return false
+	}
+	return runtime.WindowIsMaximised(a.ctx)
+}
+
+// CloseWindow encerra o aplicativo
+func (a *App) CloseWindow() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.Quit(a.ctx)
+}
+
 // RestoreAndFocusWindow restaura a janela caso minimizada e a traz para o primeiro plano
 func (a *App) RestoreAndFocusWindow() {
 	if a.ctx == nil {
