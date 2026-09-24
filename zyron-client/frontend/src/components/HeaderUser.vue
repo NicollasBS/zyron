@@ -2,9 +2,11 @@
   <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700/60 px-5 py-3 flex items-center justify-between shadow-sm select-none">
     <!-- Identificação da Estação e Usuário -->
     <div class="flex items-center space-x-4">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-indigo-500/20">
-        Z
-      </div>
+      <img
+        :src="appIcon"
+        alt="Zyron Support"
+        class="w-10 h-10 rounded-xl shadow-md shadow-indigo-500/25 border border-indigo-500/30 object-cover"
+      />
       <div>
         <div class="flex items-center space-x-2">
           <span class="font-semibold text-slate-100 text-sm tracking-wide">{{ displayName || username || 'Carregando usuário...' }}</span>
@@ -44,6 +46,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import appIcon from '../assets/appicon.png'
 
 const props = defineProps({
   username: String,
