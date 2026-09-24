@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	_ "zyron-server/docs"
 	"zyron-server/internal/api"
 	"zyron-server/internal/db"
@@ -71,6 +72,19 @@ func main() {
 	http.HandleFunc("/healthz", healthzHandler)
 	http.HandleFunc("/api/auth/check-profile", api.CheckProfileHandler)
 	http.HandleFunc("/api/session/rate", api.RateSessionHandler)
+	http.HandleFunc("/api/update/version", api.CheckUpdateHandler)
+	http.HandleFunc("/api/update/download", api.DownloadUpdateHandler)
+	http.HandleFunc("/downloads/zyron-client.exe", api.DownloadUpdateHandler)
+	http.HandleFunc("/downloads/config.json", func(w http.ResponseWriter, r *http.Request) {
+		cfgPath := filepath.Join(api.GetUpdatesDir(), "config.json")
+		if _, err := os.Stat(cfgPath); err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			http.ServeFile(w, r, cfgPath)
+			return
+		}
+		http.NotFound(w, r)
+	})
 
 	// Endpoint WebSocket
 	http.HandleFunc("/ws", wsHandler(hub))

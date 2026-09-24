@@ -14,13 +14,24 @@
       <div>
         <div class="flex items-center space-x-2">
           <span class="font-semibold text-slate-100 text-xs tracking-wide">{{ displayName || username || 'Carregando usuário...' }}</span>
-          <!-- Função exibida apenas se for cliente comum (não exibida para operador) -->
           <span
             v-if="!isOperator"
             class="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] font-medium px-2 py-0.5 rounded-full border"
           >
             Cliente Comum
           </span>
+          <!-- Botão para acionar atualização se houver versão mais nova -->
+          <button
+            v-if="updateAvailable"
+            @click.stop="$emit('openUpdate')"
+            type="button"
+            style="--wails-draggable: no-drag;"
+            title="Nova versão disponível! Clique para atualizar."
+            class="bg-indigo-500/25 hover:bg-indigo-500/40 text-indigo-300 border border-indigo-500/40 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center space-x-1.5 transition animate-pulse cursor-pointer"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+            <span>Atualizar para {{ displayLatestVersion }}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -111,8 +122,22 @@ const props = defineProps({
     type: String,
     default: 'disconnected'
   },
-  serverUrl: String
+  serverUrl: String,
+  appVersion: {
+    type: String,
+    default: '1.0.0'
+  },
+  updateAvailable: {
+    type: Boolean,
+    default: false
+  },
+  latestVersion: {
+    type: String,
+    default: ''
+  }
 })
+
+const emit = defineEmits(['openUpdate'])
 
 const isMaximized = ref(false)
 
@@ -171,6 +196,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMaximized)
+})
+
+const displayLatestVersion = computed(() => {
+  const v = props.latestVersion || ''
+  if (!v) return ''
+  return v.startsWith('v') || v.startsWith('V') ? v : `v${v}`
 })
 
 const statusLabel = computed(() => {

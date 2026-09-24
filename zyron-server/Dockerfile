@@ -24,8 +24,10 @@ WORKDIR /app
 # Instala certificados CA e wget para healthcheck
 RUN apk --no-cache add ca-certificates tzdata wget
 
-# Cria usuário não-root por segurança
-RUN adduser -D -g '' appuser
+# Cria usuário não-root por segurança e diretório de downloads
+RUN adduser -D -g '' appuser && \
+    mkdir -p /app/downloads && \
+    chown -R appuser:appuser /app/downloads
 
 # Copia o binário compilado
 COPY --from=builder /app/zyron-server /app/zyron-server

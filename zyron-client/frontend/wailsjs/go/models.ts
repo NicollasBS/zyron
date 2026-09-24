@@ -65,3 +65,50 @@ export namespace system {
 
 }
 
+export namespace updater {
+	
+	export class UpdateApplyResult {
+	    success: boolean;
+	    message: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateApplyResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
+	export class UpdateCheckResult {
+	    update_available: boolean;
+	    current_version: string;
+	    latest_version: string;
+	    download_url: string;
+	    release_notes: string;
+	    size: number;
+	    sha256: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.update_available = source["update_available"];
+	        this.current_version = source["current_version"];
+	        this.latest_version = source["latest_version"];
+	        this.download_url = source["download_url"];
+	        this.release_notes = source["release_notes"];
+	        this.size = source["size"];
+	        this.sha256 = source["sha256"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+

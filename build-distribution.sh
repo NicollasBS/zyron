@@ -3,16 +3,19 @@
 # Zyron - Script de Build e Distribuição de Atualizações (Ambiente Linux)
 # ==============================================================================
 # Este script automatiza o processo no servidor Linux após executar 'git pull':
-#   1. Detecta a versão da aplicação (ou aceita uma personalizada).
-#   2. Compila o cliente Windows (zyron-client.exe) nativamente ou via Docker.
-#   3. Copia o binário para zyron-server/downloads/.
-#   4. Gera o arquivo version.json com a versão e notas de lançamento.
-#   5. Sincroniza os arquivos com o container zyron_api em execução.
-#   6. Opcionalmente reinicia os containers do servidor.
+#   1. Permite alterar IP e porta no config.json (via flags ou interativo).
+#   2. Detecta a versão da aplicação (ou aceita uma personalizada).
+#   3. Compila o cliente Windows (zyron-client.exe) nativamente ou via Docker.
+#   4. Copia o binário e config.json para zyron-server/downloads/.
+#   5. Gera o arquivo version.json com a versão e notas de lançamento.
+#   6. Sincroniza os arquivos com o container zyron_api em execução.
+#   7. Opcionalmente reinicia os containers do servidor.
 #
-# Uso:
+# Exemplos de Uso:
 #   ./build-distribution.sh
-#   ./build-distribution.sh --version 1.0.2 --notes "Correções e melhorias"
+#   ./build-distribution.sh --ip 192.168.1.100 --port 8080
+#   ./build-distribution.sh --config
+#   ./build-distribution.sh --version 1.0.3 --notes "Correções gerais"
 #   ./build-distribution.sh --skip-build
 #   ./build-distribution.sh --restart-server
 # ==============================================================================
@@ -43,8 +46,42 @@ DOWNLOADS_DIR="$SERVER_DIR/downloads"
 
 CUSTOM_VERSION=""
 CUSTOM_NOTES=""
+CUSTOM_IP=""
+CUSTOM_PORT=""
+CONFIG_INTERACTIVE=false
 SKIP_BUILD=false
 RESTART_SERVER=false
+
+# Função para definir o arquivo como oculto (compatível com Linux, WSL e Git Bash)
+hide_config_file() {
+    local target="$1"
+    if [ ! -f "$target" ]; then
+        return
+    fi
+
+    # 1. Se estiver em ambiente Windows (Git Bash, MSYS, WSL)
+    if command -v attrib.exe >/dev/null 2>&1; then
+        local win_path
+        win_path="$(cygpath -w "$target" 2>/dev/null || wslpath -w "$target" 2>/dev/null || echo "$target")"
+        attrib.exe +h "$win_path" >/dev/null 2>&1 || true
+    elif command -v attrib >/dev/null 2>&1; then
+        attrib +h "$target" >/dev/null 2>&1 || true
+    elif command -v cmd.exe >/dev/null 2>&1; then
+        local win_path
+        win_path="$(cygpath -w "$target" 2>/dev/null || echo "$target")"
+        cmd.exe /c "attrib +h $win_path" >/dev/null 2>&1 || true
+    fi
+
+    # 2. No Linux se fatattr estiver disponível (partições Windows montadas)
+    if command -v fatattr >/dev/null 2>&1; then
+        fatattr +h "$target" >/dev/null 2>&1 || true
+    fi
+
+    # 3. Cria também cópia oculta .config.json (padrão Linux/Unix)
+    local target_dir
+    target_dir="$(dirname "$target")"
+    cp -f "$target" "$target_dir/.config.json" 2>/dev/null || true
+}
 
 # Processa parâmetros de linha de comando
 while [[ $# -gt 0 ]]; do
@@ -57,6 +94,18 @@ while [[ $# -gt 0 ]]; do
             CUSTOM_NOTES="$2"
             shift 2
             ;;
+        -i|--ip)
+            CUSTOM_IP="$2"
+            shift 2
+            ;;
+        -p|--port)
+            CUSTOM_PORT="$2"
+            shift 2
+            ;;
+        -c|--config)
+            CONFIG_INTERACTIVE=true
+            shift
+            ;;
         -s|--skip-build)
             SKIP_BUILD=true
             shift
@@ -68,8 +117,13 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Uso: $0 [OPÇÕES]"
             echo ""
-            echo "Opções:"
-            echo "  -v, --version <versão>   Define a versão manualmente (ex: 1.0.2)"
+            echo "Opções de Conexão e Configuração:"
+            echo "  -i, --ip <endereço>      Altera o server_ip no config.json (ex: 192.168.1.100)"
+            echo "  -p, --port <porta>       Altera a server_port no config.json (ex: 8080)"
+            echo "  -c, --config             Modo interativo para editar IP e Porta do config.json"
+            echo ""
+            echo "Opções de Versão e Compilação:"
+            echo "  -v, --version <versão>   Define a versão manualmente (ex: 1.0.3)"
             echo "  -n, --notes <texto>      Define as notas de lançamento"
             echo "  -s, --skip-build         Pula a compilação e usa o zyron-client.exe existente"
             echo "  -r, --restart-server     Reinicia o container zyron_api após publicação"
@@ -88,6 +142,43 @@ echo -e "${BLUE}========================================================${NC}"
 echo -e "${BLUE}      Zyron - Build & Distribuição de Atualizações      ${NC}"
 echo -e "${BLUE}========================================================${NC}"
 echo ""
+
+# 0. Configuração de IP e Porta (config.json)
+CONFIG_FILE="$CLIENT_DIR/config.json"
+CURRENT_IP=""
+CURRENT_PORT=""
+if [ -f "$CONFIG_FILE" ]; then
+    CURRENT_IP=$(grep -E '"server_ip"' "$CONFIG_FILE" 2>/dev/null | sed -E 's/.*"server_ip"\s*:\s*"([^"]+)".*/\1/')
+    CURRENT_PORT=$(grep -E '"server_port"' "$CONFIG_FILE" 2>/dev/null | sed -E 's/.*"server_port"\s*:\s*([0-9]+).*/\1/')
+fi
+CURRENT_IP="${CURRENT_IP:-127.0.0.1}"
+CURRENT_PORT="${CURRENT_PORT:-8080}"
+
+if [ "$CONFIG_INTERACTIVE" = true ]; then
+    echo -e "${YELLOW}[Configuração de Conexão do Cliente (config.json)]${NC}"
+    read -r -p "Informe o IP ou Host do servidor [$CURRENT_IP]: " INPUT_IP
+    CUSTOM_IP="${INPUT_IP:-$CURRENT_IP}"
+    read -r -p "Informe a porta do servidor [$CURRENT_PORT]: " INPUT_PORT
+    CUSTOM_PORT="${INPUT_PORT:-$CURRENT_PORT}"
+    echo ""
+fi
+
+if [ -n "$CUSTOM_IP" ] || [ -n "$CUSTOM_PORT" ]; then
+    NEW_IP="${CUSTOM_IP:-$CURRENT_IP}"
+    NEW_PORT="${CUSTOM_PORT:-$CURRENT_PORT}"
+    echo -e "${YELLOW}[0/5] Atualizando config.json com IP: $NEW_IP e Porta: $NEW_PORT...${NC}"
+    cat <<EOF > "$CONFIG_FILE"
+{
+  "server_ip": "$NEW_IP",
+  "server_port": $NEW_PORT
+}
+EOF
+    hide_config_file "$CONFIG_FILE"
+    echo -e "${GREEN}  -> Arquivo $CONFIG_FILE atualizado e definido como oculto!${NC}"
+else
+    hide_config_file "$CONFIG_FILE"
+    echo -e "${BLUE}[0/5] Configuração atual do cliente: IP $CURRENT_IP na porta $CURRENT_PORT (oculto)${NC}"
+fi
 
 # 1. Determinação da Versão
 VERSION_FILE="$CLIENT_DIR/internal/version/version.go"
@@ -132,13 +223,23 @@ else
     fi
 fi
 
-# 3. Distribuição do Executável para a pasta de downloads do servidor
-echo -e "${YELLOW}[3/5] Publicando binário na pasta de downloads do servidor...${NC}"
+# 3. Distribuição do Executável e config.json para a pasta de downloads do servidor
+echo -e "${YELLOW}[3/5] Publicando binário e arquivos de configuração...${NC}"
 mkdir -p "$DOWNLOADS_DIR"
 
 if [ -f "$CLIENT_DIR/build/bin/zyron-client.exe" ]; then
     cp -f "$CLIENT_DIR/build/bin/zyron-client.exe" "$DOWNLOADS_DIR/zyron-client.exe"
     echo -e "${GREEN}  -> Copiado de build/bin para $DOWNLOADS_DIR/zyron-client.exe${NC}"
+fi
+
+if [ -f "$CONFIG_FILE" ]; then
+    mkdir -p "$CLIENT_DIR/build/bin"
+    cp -f "$CONFIG_FILE" "$CLIENT_DIR/build/bin/config.json"
+    cp -f "$CONFIG_FILE" "$DOWNLOADS_DIR/config.json"
+    hide_config_file "$CONFIG_FILE"
+    hide_config_file "$CLIENT_DIR/build/bin/config.json"
+    hide_config_file "$DOWNLOADS_DIR/config.json"
+    echo -e "${GREEN}  -> config.json sincronizado e definido como oculto em build/bin e $DOWNLOADS_DIR/config.json${NC}"
 fi
 
 if [ ! -f "$DOWNLOADS_DIR/zyron-client.exe" ]; then
@@ -177,6 +278,12 @@ if command -v docker >/dev/null 2>&1; then
         docker exec -u 0 zyron_api mkdir -p /app/downloads >/dev/null 2>&1 || true
         docker cp "$DOWNLOADS_DIR/zyron-client.exe" zyron_api:/app/downloads/zyron-client.exe
         docker cp "$DOWNLOADS_DIR/version.json" zyron_api:/app/downloads/version.json
+        if [ -f "$DOWNLOADS_DIR/config.json" ]; then
+            docker cp "$DOWNLOADS_DIR/config.json" zyron_api:/app/downloads/config.json >/dev/null 2>&1 || true
+        fi
+        if [ -f "$DOWNLOADS_DIR/.config.json" ]; then
+            docker cp "$DOWNLOADS_DIR/.config.json" zyron_api:/app/downloads/.config.json >/dev/null 2>&1 || true
+        fi
         docker exec -u 0 zyron_api chown -R appuser:appuser /app/downloads >/dev/null 2>&1 || true
         echo -e "${GREEN}  -> Sincronizado com o container 'zyron_api' em execução!${NC}"
     else

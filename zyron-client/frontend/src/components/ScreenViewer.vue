@@ -86,6 +86,10 @@
         <span>Resolução adaptativa LAN</span>
         <span>•</span>
         <span class="text-emerald-400">P2P Direto Ativo</span>
+        <template v-if="displayVersion">
+          <span>•</span>
+          <span class="font-mono text-slate-400">{{ displayVersion }}</span>
+        </template>
       </div>
     </div>
   </div>
@@ -103,7 +107,11 @@ const props = defineProps({
     default: 0
   },
   videoStream: Object,
-  audioStream: Object
+  audioStream: Object,
+  appVersion: {
+    type: String,
+    default: ''
+  }
 })
 
 const emit = defineEmits(['closeSession'])
@@ -118,6 +126,12 @@ const formattedDuration = computed(() => {
   const mins = Math.floor(props.durationSeconds / 60)
   const secs = props.durationSeconds % 60
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+})
+
+const displayVersion = computed(() => {
+  if (!props.appVersion) return ''
+  const v = props.appVersion
+  return v.startsWith('v') || v.startsWith('V') ? v : `v${v}`
 })
 
 watch(

@@ -30,6 +30,10 @@
       :is-operator="isOperator"
       :connection-status="wsStatus"
       :server-url="serverUrl"
+      :app-version="displayVersion"
+      :update-available="updateAvailable"
+      :latest-version="displayLatestVersion"
+      @open-update="showUpdateModal = true"
     />
 
     <!-- Notificação de Erro Global (se houver) -->
@@ -59,6 +63,7 @@
           :duration-seconds="callDuration"
           :video-stream="remoteVideoStream"
           :audio-stream="remoteAudioStream"
+          :app-version="displayVersion"
           @close-session="handleCloseSession"
         >
           <template #voiceControls>
@@ -110,11 +115,51 @@
       :ticket-id="lastEvaluatedTicketId"
       @submit-rating="handleSubmitRating"
     />
+
+    <!-- Modal de Atualização Automática do Zyron Client -->
+    <UpdateModal
+      :show="showUpdateModal"
+      :current-version="displayVersion"
+      :latest-version="displayLatestVersion"
+      :download-url="downloadUrl"
+      :release-notes="releaseNotes"
+      :sha256="updateSha256"
+      :server-url="serverUrl"
+      @close="showUpdateModal = false"
+      @updated="handleAppUpdated"
+    />
+
+    <!-- Indicador de Versão no Canto Inferior Direito da Aplicação -->
+    <footer
+      v-if="!operatorInCall"
+      class="fixed bottom-3 right-4 z-20 flex items-center space-x-2 select-none pointer-events-auto"
+    >
+      <div
+        class="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 hover:border-slate-600 px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-400 hover:text-slate-200 transition shadow-sm cursor-default flex items-center space-x-1.5 backdrop-blur-sm"
+        :title="`Versão da Aplicação: ${displayVersion}`"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+        <span>{{ displayVersion }}</span>
+      </div>
+
+      <!-- Botão para acionar atualização se houver versão mais nova -->
+      <button
+        v-if="updateAvailable"
+        @click.stop="showUpdateModal = true"
+        type="button"
+        style="--wails-draggable: no-drag;"
+        :title="`Nova versão ${displayLatestVersion} disponível! Clique para atualizar.`"
+        class="bg-indigo-500/25 hover:bg-indigo-500/40 text-indigo-300 border border-indigo-500/40 text-[11px] font-semibold px-2.5 py-1 rounded-md flex items-center space-x-1.5 transition animate-pulse cursor-pointer shadow-sm"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+        <span>Atualizar para {{ displayLatestVersion }}</span>
+      </button>
+    </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import HeaderUser from './components/HeaderUser.vue'
 import ClientWaitingQueue from './components/ClientWaitingQueue.vue'
 import OperatorQueueTable from './components/OperatorQueueTable.vue'
@@ -122,9 +167,10 @@ import ScreenViewer from './components/ScreenViewer.vue'
 import VoiceControls from './components/VoiceControls.vue'
 import EvaluationModal from './components/EvaluationModal.vue'
 import FloatingCallWidget from './components/FloatingCallWidget.vue'
+import UpdateModal from './components/UpdateModal.vue'
 import { wsService } from './services/ws'
 import { webrtcService } from './services/webrtc'
-import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, RestoreAndFocusWindow, SetFloatingMode } from '../wailsjs/go/main/App'
+import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, RestoreAndFocusWindow, SetFloatingMode, GetAppVersion, CheckForUpdate } from '../wailsjs/go/main/App'
 
 // Estado da Estação e Configurações
 const systemInfo = ref({
@@ -150,6 +196,26 @@ const isFloatingMode = ref(false)
 const showEvaluationModal = ref(false)
 const lastEvaluatedTicketId = ref('')
 const lastEvaluatedOperator = ref('')
+
+// Estado de Atualização Automática e Versão
+const appVersion = ref('1.0.0')
+const updateAvailable = ref(false)
+const latestVersion = ref('')
+const downloadUrl = ref('')
+const releaseNotes = ref('')
+const updateSha256 = ref('')
+const showUpdateModal = ref(false)
+
+const displayVersion = computed(() => {
+  const v = appVersion.value || '1.0.0'
+  return v.startsWith('v') || v.startsWith('V') ? v : `v${v}`
+})
+
+const displayLatestVersion = computed(() => {
+  const v = latestVersion.value || ''
+  if (!v) return ''
+  return v.startsWith('v') || v.startsWith('V') ? v : `v${v}`
+})
 
 // Estado do Operador
 const operatorQueue = ref([])
@@ -257,6 +323,18 @@ async function initializeApp() {
   try {
     // 1. Obtenção de dados do sistema via backend Go (Wails Bind)
     if (window.go && window.go.main && window.go.main.App) {
+      try {
+        if (typeof GetAppVersion === 'function') {
+          const ver = await GetAppVersion()
+          if (ver) appVersion.value = ver
+        } else if (window.go.main.App.GetAppVersion) {
+          const ver = await window.go.main.App.GetAppVersion()
+          if (ver) appVersion.value = ver
+        }
+      } catch (e) {
+        console.warn('Erro ao obter versão inicial do app:', e)
+      }
+
       const sys = await GetSystemInfo()
       systemInfo.value = sys
 
@@ -284,14 +362,52 @@ async function initializeApp() {
       }
       userDisplayName.value = '185033'
       isOperator.value = false
+      appVersion.value = '1.0.0'
     }
 
     // 3. Conexão WebSocket para sinalização e presença
     setupWebSocket()
+
+    // 4. Verificação de Atualização Automática
+    checkAppUpdate()
   } catch (err) {
     console.error('Erro na inicialização:', err)
     errorMessage.value = `Erro de inicialização: ${err.message}`
   }
+}
+
+async function checkAppUpdate() {
+  try {
+    if (typeof GetAppVersion === 'function') {
+      const ver = await GetAppVersion()
+      if (ver) appVersion.value = ver
+    } else if (window.go?.main?.App?.GetAppVersion) {
+      const ver = await window.go.main.App.GetAppVersion()
+      if (ver) appVersion.value = ver
+    }
+
+    let res = null
+    if (typeof CheckForUpdate === 'function') {
+      res = await CheckForUpdate(serverUrl.value)
+    } else if (window.go?.main?.App?.CheckForUpdate) {
+      res = await window.go.main.App.CheckForUpdate(serverUrl.value)
+    }
+
+    if (res && res.update_available) {
+      updateAvailable.value = true
+      latestVersion.value = res.latest_version
+      downloadUrl.value = res.download_url
+      releaseNotes.value = res.release_notes
+      updateSha256.value = res.sha256
+      showUpdateModal.value = true
+    }
+  } catch (e) {
+    console.warn('Erro ao verificar atualizações do Zyron:', e)
+  }
+}
+
+function handleAppUpdated() {
+  console.log('[App] Atualização aplicada. O aplicativo reiniciará em instantes.')
 }
 
 /**

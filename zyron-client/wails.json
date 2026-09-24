@@ -7,7 +7,7 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Zyron Team",
-    "email": "support@zyron.local"
+    "name": "Nicollas Schoemberger",
+    "email": "coordenadorti.949@plansul.com.br"
   }
 }

@@ -75,6 +75,8 @@ services:
       AD_INSECURE_SKIP_VERIFY: "${AD_INSECURE_SKIP_VERIFY:-true}"
     ports:
       - "${DEV_APP_PORT:-8080}:8080"
+    volumes:
+      - ./downloads:/app/downloads
     depends_on:
       zyron_db:
         condition: service_healthy

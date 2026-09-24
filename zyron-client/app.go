@@ -11,6 +11,8 @@ import (
 	"time"
 	"zyron-client/internal/config"
 	"zyron-client/internal/system"
+	"zyron-client/internal/updater"
+	"zyron-client/internal/version"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -28,6 +30,7 @@ func NewApp() *App {
 // startup é chamado na inicialização do aplicativo Wails
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	updater.CleanupOldVersion()
 }
 
 // CheckProfileResponse representa a resposta da checagem de perfil
@@ -56,6 +59,53 @@ func (a *App) SetServerURL(serverURL string) (bool, string) {
 		return false, err.Error()
 	}
 	return true, ""
+}
+
+// GetAppVersion retorna a versão atual compilada desta instância do Zyron Client
+func (a *App) GetAppVersion() string {
+	return version.CurrentVersion
+}
+
+// CheckForUpdate consulta o servidor para verificar se há versão mais recente disponível
+func (a *App) CheckForUpdate(serverURL string) updater.UpdateCheckResult {
+	if strings.TrimSpace(serverURL) == "" {
+		serverURL = config.GetConfig().ServerURL
+	}
+	res, err := updater.CheckForUpdate(serverURL, version.CurrentVersion)
+	if err != nil && res == nil {
+		return updater.UpdateCheckResult{
+			CurrentVersion: version.CurrentVersion,
+			Error:          err.Error(),
+		}
+	}
+	return *res
+}
+
+// ApplyUpdate baixa o novo executável do servidor, agenda a substituição atômica no Windows e reinicia
+func (a *App) ApplyUpdate(serverURL string, downloadURL string, expectedSHA256 string) updater.UpdateApplyResult {
+	if strings.TrimSpace(serverURL) == "" {
+		serverURL = config.GetConfig().ServerURL
+	}
+	success, msg, err := updater.DownloadAndApplyUpdate(serverURL, downloadURL, expectedSHA256)
+	if err != nil {
+		return updater.UpdateApplyResult{
+			Success: false,
+			Error:   err.Error(),
+		}
+	}
+
+	// Aguarda 300ms para a resposta HTTP retornar ao frontend antes de encerrar o processo atual
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		if a.ctx != nil {
+			runtime.Quit(a.ctx)
+		}
+	}()
+
+	return updater.UpdateApplyResult{
+		Success: success,
+		Message: msg,
+	}
 }
 
 // CheckProfile consulta o servidor central para verificar se o usuário é Operador ou Cliente Comum

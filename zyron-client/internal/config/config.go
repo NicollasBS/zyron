@@ -65,6 +65,7 @@ func Load() Config {
 
 	if found {
 		loadedPath = foundPath
+		hideConfigFile(foundPath)
 		current = resolveConfig(loaded)
 		log.Printf("[Config] Carregado de '%s': IP=%s, Port=%d, URL=%s\n",
 			foundPath, current.ServerIP, current.ServerPort, current.ServerURL)
@@ -97,16 +98,19 @@ func getConfigCandidates() []string {
 	if exePath, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exePath)
 		candidates = append(candidates, filepath.Join(exeDir, "config.json"))
+		candidates = append(candidates, filepath.Join(exeDir, ".config.json"))
 	}
 
 	// 2. Diretório de trabalho atual
 	if cwd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, filepath.Join(cwd, "config.json"))
+		candidates = append(candidates, filepath.Join(cwd, ".config.json"))
 	}
 
 	// 3. Diretório de configuração do usuário (%APPDATA%/ZyronClient/config.json)
 	if userConfigDir, err := os.UserConfigDir(); err == nil {
 		candidates = append(candidates, filepath.Join(userConfigDir, "ZyronClient", "config.json"))
+		candidates = append(candidates, filepath.Join(userConfigDir, "ZyronClient", ".config.json"))
 	}
 
 	return candidates
