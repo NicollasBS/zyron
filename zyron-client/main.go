@@ -14,8 +14,8 @@ import (
 var assets embed.FS
 
 func main() {
-	// Permite que o WebView2 execute áudio automaticamente (WebRTC) sem exigir clique prévio e habilita IPs diretos na LAN
-	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required --disable-features=WebRtcHideLocalIpsWithMdns")
+	// Permite que o WebView2 execute áudio automaticamente (WebRTC) e desativa recursos de descoberta de rede (MediaRouter/SSDP/DIAL) que disparam o popup de rede/firewall do Windows
+	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required --disable-features=WebRtcHideLocalIpsWithMdns,MediaRouter,DialLocalDiscovery --disable-device-discovery-notifications")
 
 	// Cria uma instância da aplicação
 	app := NewApp()
