@@ -14,27 +14,35 @@ export class WebRTCService {
     this.onTrackCallback = null
     this.isAbortingCaller = false
     this.receiverReadyPromise = null
+    this.dataChannel = null
+    this.onDataChannelCallback = null
   }
 
   /**
    * Inicializa uma nova instância de RTCPeerConnection
    */
-  initPeerConnection(onIceCandidate, onTrack) {
+  initPeerConnection(onIceCandidate, onTrack, onDataChannelMessage) {
     if (onIceCandidate) this.onIceCandidateCallback = onIceCandidate
     if (onTrack) this.onTrackCallback = onTrack
+    if (onDataChannelMessage) this.onDataChannelCallback = onDataChannelMessage
+    this.dataChannel = null
 
     // Configuração com fallback STUN público para resolução de IPs diretos (evita anonimização mDNS .local no Chromium)
     const config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 2
+      ]
     }
 
     this.peerConnection = new RTCPeerConnection(config)
     this.hasRemoteDescription = false
     this.pendingIceCandidates = []
+
+    this.peerConnection.ondatachannel = (event) => {
+      console.log('[WebRTC] DataChannel recebido:', event.channel.label)
+      this.setupDataChannel(event.channel)
+    }
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.onIceCandidateCallback) {
@@ -71,11 +79,65 @@ export class WebRTCService {
     }
   }
 
+  setupDataChannel(channel) {
+    if (!channel) return
+    this.dataChannel = channel
+
+    this.dataChannel.onopen = () => {
+      console.log('[WebRTC] DataChannel aberto para ponteiro laser:', channel.label)
+    }
+
+    this.dataChannel.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (this.onDataChannelCallback) {
+          this.onDataChannelCallback(data)
+        }
+      } catch (err) {
+        console.warn('[WebRTC] Erro ao decodificar dados do DataChannel:', err)
+      }
+    }
+
+    this.dataChannel.onclose = () => {
+      console.log('[WebRTC] DataChannel fechado')
+      if (this.dataChannel === channel) {
+        this.dataChannel = null
+      }
+    }
+  }
+
+  createLaserDataChannel() {
+    if (!this.peerConnection) return null
+    try {
+      const channel = this.peerConnection.createDataChannel('zyron-laser', {
+        ordered: false,
+        maxRetransmits: 0
+      })
+      this.setupDataChannel(channel)
+      return channel
+    } catch (err) {
+      console.warn('[WebRTC] Falha ao criar DataChannel para laser:', err)
+      return null
+    }
+  }
+
+  sendLaserData(laserData) {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.dataChannel.send(JSON.stringify(laserData))
+        return true
+      } catch (err) {
+        console.warn('[WebRTC] Falha ao enviar laser via DataChannel:', err)
+      }
+    }
+    return false
+  }
+
   /**
    * FLUXO CLIENTE SOLICITANTE:
    * Captura Tela + Microfone e gera a Offer SDP
    */
-  async startCaller({ onIceCandidate, onRemoteAudio, onScreenStop, onPromptRetry }) {
+  async startCaller({ onIceCandidate, onRemoteAudio, onScreenStop, onPromptRetry, onLaserData }) {
     this.close()
     this.isAbortingCaller = false
 
@@ -83,7 +145,7 @@ export class WebRTCService {
       if (kind === 'audio' && onRemoteAudio) {
         onRemoteAudio(stream)
       }
-    })
+    }, onLaserData)
 
     try {
       // 1. Captura de Tela (Vídeo) priorizando Tela Inteira (displaySurface: 'monitor')
@@ -149,6 +211,9 @@ export class WebRTCService {
           direction: this.localAudioStream ? 'sendrecv' : 'recvonly'
         })
       }
+
+      // 3.1 Cria DataChannel antes da Offer para suporte a telemetria e ponteiro laser em tempo real
+      this.createLaserDataChannel()
 
       // 4. Cria a Oferta SDP
       const offer = await this.peerConnection.createOffer()
@@ -249,7 +314,7 @@ export class WebRTCService {
    * FLUXO OPERADOR DE SUPORTE:
    * Prepara microfone do operador e aguarda tracks de tela e voz do cliente
    */
-  async startReceiver({ onIceCandidate, onRemoteTrack }) {
+  async startReceiver({ onIceCandidate, onRemoteTrack, onLaserData }) {
     this.close()
     this.isAbortingCaller = false
 
@@ -257,7 +322,7 @@ export class WebRTCService {
       if (onRemoteTrack) {
         onRemoteTrack(kind, stream)
       }
-    })
+    }, onLaserData)
 
     // Inicia captura prévia do microfone do operador para estar disponível quando a offer chegar
     this.receiverReadyPromise = this.ensureOperatorAudio()
@@ -440,10 +505,18 @@ export class WebRTCService {
       this.peerConnection = null
     }
 
+    if (this.dataChannel) {
+      try {
+        this.dataChannel.close()
+      } catch (e) {}
+      this.dataChannel = null
+    }
+
     this.pendingIceCandidates = []
     this.hasRemoteDescription = false
     this.isMuted = false
     this.receiverReadyPromise = null
+    this.onDataChannelCallback = null
     console.log('[WebRTC] Sessão de mídia encerrada.')
   }
 }

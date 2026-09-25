@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"zyron-client/internal/config"
+	"zyron-client/internal/laser"
 	"zyron-client/internal/system"
 	"zyron-client/internal/updater"
 	"zyron-client/internal/version"
@@ -31,6 +32,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	updater.CleanupOldVersion()
+	laser.GetLaserController() // Inicializa o controlador do ponteiro laser em background
 }
 
 // CheckProfileResponse representa a resposta da checagem de perfil
@@ -273,3 +275,14 @@ func (a *App) SetFloatingMode(enable bool) {
 		runtime.WindowShow(a.ctx)
 	}
 }
+
+// UpdateLaserPointer atualiza a posição e estado do ponteiro laser na tela real do cliente
+func (a *App) UpdateLaserPointer(xPercent, yPercent float64, active, click bool) {
+	laser.GetLaserController().UpdateLaser(xPercent, yPercent, active, click)
+}
+
+// HideLaserPointer oculta imediatamente o ponteiro laser
+func (a *App) HideLaserPointer() {
+	laser.GetLaserController().HideLaser()
+}
+

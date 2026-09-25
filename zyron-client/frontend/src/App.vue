@@ -64,6 +64,7 @@
           :video-stream="remoteVideoStream"
           :audio-stream="remoteAudioStream"
           :app-version="displayVersion"
+          @laser-update="handleOperatorLaserUpdate"
           @close-session="handleCloseSession"
         >
           <template #voiceControls>
@@ -170,7 +171,7 @@ import FloatingCallWidget from './components/FloatingCallWidget.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import { wsService } from './services/ws'
 import { webrtcService } from './services/webrtc'
-import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, RestoreAndFocusWindow, SetFloatingMode, GetAppVersion, CheckForUpdate } from '../wailsjs/go/main/App'
+import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, RestoreAndFocusWindow, SetFloatingMode, GetAppVersion, CheckForUpdate, UpdateLaserPointer, HideLaserPointer } from '../wailsjs/go/main/App'
 
 // Estado da Estação e Configurações
 const systemInfo = ref({
@@ -313,6 +314,33 @@ function startAudioContextFallback(stream) {
     console.log('[App] Stream de áudio do operador conectado com sucesso ao Web AudioContext!')
   } catch (err) {
     console.warn('[App] Web AudioContext notice:', err)
+  }
+}
+
+/**
+ * Controle de Telemetria do Ponteiro Laser em Tempo Real
+ */
+function handleLaserReceived(payload) {
+  if (!payload) return
+  const { x, y, active, click } = payload
+  try {
+    if (typeof UpdateLaserPointer === 'function') {
+      UpdateLaserPointer(x, y, active, !!click)
+    } else if (window.go?.main?.App?.UpdateLaserPointer) {
+      window.go.main.App.UpdateLaserPointer(x, y, active, !!click)
+    }
+  } catch (err) {
+    console.warn('[App] Erro ao desenhar ponteiro laser na tela nativa:', err)
+  }
+}
+
+function handleOperatorLaserUpdate(payload) {
+  // 1. Tenta envio ultra-rápido (<1ms) via canal de dados direto WebRTC DataChannel
+  const sent = webrtcService.sendLaserData(payload)
+
+  // 2. Se DataChannel ainda não estiver pronto ou sofrer handshake pendente, usa WebSocket como fallback
+  if (!sent && activeClient.value) {
+    wsService.send('laser_pointer', activeClient.value, payload)
   }
 }
 
@@ -511,6 +539,9 @@ function setupWebSocket() {
           },
           onPromptRetry: (warnMsg) => {
             errorMessage.value = warnMsg
+          },
+          onLaserData: (payload) => {
+            handleLaserReceived(payload)
           }
         })
 
@@ -566,6 +597,9 @@ function setupWebSocket() {
             } else if (kind === 'audio') {
               remoteAudioStream.value = stream
             }
+          },
+          onLaserData: (payload) => {
+            handleLaserReceived(payload)
           }
         })
       } catch (err) {
@@ -607,6 +641,13 @@ function setupWebSocket() {
     }
   })
 
+  // Telemetria do Ponteiro Laser (Fallback via WebSocket caso DataChannel esteja em handshake)
+  wsService.on('laser_pointer', (msg) => {
+    if (!isOperator.value) {
+      handleLaserReceived(msg.payload)
+    }
+  })
+
   // Encerramento de Sessão
   wsService.on('session_closed', () => {
     finishActiveSession('A sessão de atendimento foi encerrada.')
@@ -620,6 +661,17 @@ function setupWebSocket() {
 function finishActiveSession(noticeMsg) {
   stopCallTimer()
   webrtcService.close()
+
+  // Oculta o ponteiro laser na tela nativa do cliente ao encerrar o atendimento
+  try {
+    if (typeof HideLaserPointer === 'function') {
+      HideLaserPointer()
+    } else if (window.go?.main?.App?.HideLaserPointer) {
+      window.go.main.App.HideLaserPointer()
+    }
+  } catch (e) {
+    console.warn('[App] Erro ao ocultar ponteiro laser:', e)
+  }
 
   if (isFloatingMode.value) {
     isFloatingMode.value = false

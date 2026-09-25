@@ -30,6 +30,10 @@ export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
 }
 
+export function HideLaserPointer() {
+  return window['go']['main']['App']['HideLaserPointer']();
+}
+
 export function IsWindowMaximised() {
   return window['go']['main']['App']['IsWindowMaximised']();
 }
@@ -52,4 +56,8 @@ export function SetServerURL(arg1) {
 
 export function ToggleMaximizeWindow() {
   return window['go']['main']['App']['ToggleMaximizeWindow']();
+}
+
+export function UpdateLaserPointer(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UpdateLaserPointer'](arg1, arg2, arg3, arg4);
 }

@@ -18,6 +18,32 @@
 
       <!-- Controles de Janela e Ações -->
       <div class="flex items-center space-x-2">
+        <!-- Botão Alternar Ponteiro Laser -->
+        <button
+          @click="toggleLaser"
+          type="button"
+          :disabled="!hasVideo"
+          :class="[
+            !hasVideo
+              ? 'opacity-40 cursor-not-allowed bg-slate-800 text-slate-500 border-slate-700/50'
+              : isLaserActive
+                ? 'bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/30 ring-1 ring-rose-500/60 cursor-pointer'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700 cursor-pointer'
+          ]"
+          class="px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition flex items-center space-x-1.5"
+          :title="!hasVideo ? 'Aguardando início do compartilhamento de tela...' : (isLaserActive ? 'Desativar Ponteiro Laser (Atalho: L)' : 'Ativar Ponteiro Laser na tela do cliente (Atalho: L)')"
+        >
+          <span
+            class="w-2 h-2 rounded-full"
+            :class="!hasVideo ? 'bg-slate-600' : isLaserActive ? 'bg-rose-400 animate-ping' : 'bg-slate-500'"
+          ></span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <circle cx="12" cy="12" r="3" stroke-width="2" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v3m0 12v3m9-9h-3M6 12H3" />
+          </svg>
+          <span>{{ !hasVideo ? 'Laser Indisponível' : isLaserActive ? 'Laser Ativo' : 'Ativar Laser' }}</span>
+        </button>
+
         <button
           @click="toggleFullscreen"
           class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition text-xs flex items-center space-x-1"
@@ -44,16 +70,50 @@
     </div>
 
     <!-- Área de Visualização do Vídeo (Tela Remota) -->
-    <div class="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
+    <div
+      class="flex-1 bg-black relative flex items-center justify-center overflow-hidden"
+      ref="videoContainerRef"
+      @mousemove="onMouseMove"
+      @mousedown="onMouseDown"
+      @mouseleave="onMouseLeave"
+      :class="{ 'cursor-crosshair': isLaserActive }"
+    >
       <!-- Player de Vídeo -->
       <video
         ref="videoRef"
         id="clientScreenViewer"
         autoplay
         playsinline
-        class="w-full h-full object-contain"
+        @loadedmetadata="hasVideo = true"
+        class="w-full h-full object-contain pointer-events-none"
         :class="{ 'opacity-0': !hasVideo, 'opacity-100': hasVideo }"
       ></video>
+
+      <!-- Laser Visual Local (Renderizado na tela do Operador) -->
+      <div
+        v-if="isLaserActive && localLaser.visible"
+        class="pointer-events-none absolute z-30 transition-transform duration-75 ease-out"
+        :style="{
+          left: `${localLaser.x}px`,
+          top: `${localLaser.y}px`,
+          transform: 'translate(-50%, -50%)'
+        }"
+      >
+        <!-- Pulso de Clique -->
+        <div
+          v-if="localLaser.isClicking"
+          class="absolute -inset-4 rounded-full border-2 border-amber-300 animate-ping"
+        ></div>
+        <!-- Halo Externo -->
+        <div class="w-8 h-8 rounded-full border-2 border-rose-500 bg-rose-500/25 shadow-lg shadow-rose-500/60 flex items-center justify-center animate-pulse">
+          <!-- Ponto Central -->
+          <div class="w-2.5 h-2.5 rounded-full bg-rose-300 shadow-md shadow-white"></div>
+        </div>
+        <!-- Tag do Operador -->
+        <div class="absolute left-6 -top-2 whitespace-nowrap bg-rose-950/90 border border-rose-500/50 text-rose-200 text-[10px] font-mono px-1.5 py-0.5 rounded shadow-lg pointer-events-none">
+          Laser Ativo
+        </div>
+      </div>
 
       <!-- Áudio Remoto do Cliente (Oculto) -->
       <audio ref="audioRef" id="clientVoiceAudio" autoplay playsinline></audio>
@@ -61,7 +121,7 @@
       <!-- Estado: Aguardando fluxo de vídeo -->
       <div
         v-if="!hasVideo"
-        class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950"
+        class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950 pointer-events-none"
       >
         <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -114,13 +174,20 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['closeSession'])
+const emit = defineEmits(['closeSession', 'laserUpdate'])
 
 const videoRef = ref(null)
 const audioRef = ref(null)
 const containerRef = ref(null)
+const videoContainerRef = ref(null)
 const isFullscreen = ref(false)
 const hasVideo = ref(false)
+
+// Estado do Ponteiro Laser do Operador
+const isLaserActive = ref(false) // Inicia desativado por padrão
+const localLaser = ref({ visible: false, x: 0, y: 0, isClicking: false })
+let lastSendTime = 0
+let clickTimeout = null
 
 const formattedDuration = computed(() => {
   const mins = Math.floor(props.durationSeconds / 60)
@@ -134,6 +201,137 @@ const displayVersion = computed(() => {
   return v.startsWith('v') || v.startsWith('V') ? v : `v${v}`
 })
 
+function toggleLaser() {
+  // Permite ativar o laser somente após o compartilhamento de tela estar ativo
+  if (!hasVideo.value) return
+
+  isLaserActive.value = !isLaserActive.value
+  if (!isLaserActive.value) {
+    localLaser.value.visible = false
+    emit('laserUpdate', { x: 0, y: 0, active: false, click: false })
+  }
+}
+
+/**
+ * Calcula as coordenadas normalizadas (0.0 a 1.0) considerando o letterbox (object-contain) do vídeo
+ */
+function calculateNormalizedCoords(event) {
+  if (!videoRef.value || !videoContainerRef.value) return null
+  const video = videoRef.value
+  const container = videoContainerRef.value
+
+  const rect = container.getBoundingClientRect()
+  const containerW = rect.width
+  const containerH = rect.height
+
+  // Dimensões do vídeo real recebido da tela do cliente
+  const videoW = video.videoWidth || containerW
+  const videoH = video.videoHeight || containerH
+
+  if (videoW <= 0 || videoH <= 0 || containerW <= 0 || containerH <= 0) {
+    return null
+  }
+
+  const videoRatio = videoW / videoH
+  const containerRatio = containerW / containerH
+
+  let renderW = containerW
+  let renderH = containerH
+  let offsetX = 0
+  let offsetY = 0
+
+  if (containerRatio > videoRatio) {
+    // Barras pretas laterais (letterbox vertical)
+    renderH = containerH
+    renderW = containerH * videoRatio
+    offsetX = (containerW - renderW) / 2
+  } else {
+    // Barras pretas superior/inferior (pillarbox horizontal)
+    renderW = containerW
+    renderH = containerW / videoRatio
+    offsetY = (containerH - renderH) / 2
+  }
+
+  const mouseX = event.clientX - rect.left - offsetX
+  const mouseY = event.clientY - rect.top - offsetY
+
+  // Se o mouse estiver nas barras pretas fora do frame real de vídeo
+  if (mouseX < 0 || mouseX > renderW || mouseY < 0 || mouseY > renderH) {
+    return null
+  }
+
+  return {
+    normX: Math.max(0, Math.min(1, mouseX / renderW)),
+    normY: Math.max(0, Math.min(1, mouseY / renderH)),
+    localX: event.clientX - rect.left,
+    localY: event.clientY - rect.top
+  }
+}
+
+function onMouseMove(event) {
+  if (!isLaserActive.value || !hasVideo.value) return
+  const coords = calculateNormalizedCoords(event)
+
+  if (!coords) {
+    localLaser.value.visible = false
+    emit('laserUpdate', { x: 0, y: 0, active: false, click: false })
+    return
+  }
+
+  // Atualiza posição do laser no visor do operador
+  localLaser.value.visible = true
+  localLaser.value.x = coords.localX
+  localLaser.value.y = coords.localY
+
+  // Throttle de ~30 fps para envio suave sem sobrecarga de rede
+  const now = performance.now()
+  if (now - lastSendTime >= 30) {
+    lastSendTime = now
+    emit('laserUpdate', {
+      x: coords.normX,
+      y: coords.normY,
+      active: true,
+      click: false
+    })
+  }
+}
+
+function onMouseDown(event) {
+  if (!isLaserActive.value || !hasVideo.value) return
+  const coords = calculateNormalizedCoords(event)
+  if (!coords) return
+
+  // Dispara animação de onda expansiva no operador
+  localLaser.value.isClicking = true
+  if (clickTimeout) clearTimeout(clickTimeout)
+  clickTimeout = setTimeout(() => {
+    localLaser.value.isClicking = false
+  }, 350)
+
+  // Envia pulso de clique imediatamente para a tela do cliente
+  emit('laserUpdate', {
+    x: coords.normX,
+    y: coords.normY,
+    active: true,
+    click: true
+  })
+}
+
+function onMouseLeave() {
+  if (!isLaserActive.value) return
+  localLaser.value.visible = false
+  emit('laserUpdate', { x: 0, y: 0, active: false, click: false })
+}
+
+function onKeyDown(e) {
+  // Atalho 'L' para alternar o laser sem tirar o foco da chamada (somente após compartilhamento ativo)
+  if ((e.key === 'l' || e.key === 'L') && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+    if (hasVideo.value) {
+      toggleLaser()
+    }
+  }
+}
+
 watch(
   () => props.videoStream,
   (stream) => {
@@ -145,6 +343,11 @@ watch(
       })
     } else {
       hasVideo.value = false
+      if (isLaserActive.value) {
+        isLaserActive.value = false
+        localLaser.value.visible = false
+        emit('laserUpdate', { x: 0, y: 0, active: false, click: false })
+      }
     }
   },
   { immediate: true }
@@ -196,5 +399,7 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', () => {
     isFullscreen.value = !!document.fullscreenElement
   })
+
+  window.addEventListener('keydown', onKeyDown)
 })
 </script>

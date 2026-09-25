@@ -19,6 +19,8 @@ export function GetConfig():Promise<config.Config>;
 
 export function GetSystemInfo():Promise<system.SystemInfo>;
 
+export function HideLaserPointer():Promise<void>;
+
 export function IsWindowMaximised():Promise<boolean>;
 
 export function MinimizeWindow():Promise<void>;
@@ -30,3 +32,5 @@ export function SetFloatingMode(arg1:boolean):Promise<void>;
 export function SetServerURL(arg1:string):Promise<boolean|string>;
 
 export function ToggleMaximizeWindow():Promise<void>;
+
+export function UpdateLaserPointer(arg1:number,arg2:number,arg3:boolean,arg4:boolean):Promise<void>;
