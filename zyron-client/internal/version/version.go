@@ -1,4 +1,4 @@
 package version
 
 // CurrentVersion define a versão atual compilada desta instância do Zyron Client
-const CurrentVersion = "1.0.1"
+const CurrentVersion = "1.0.2"
