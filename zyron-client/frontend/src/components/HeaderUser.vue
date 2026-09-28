@@ -137,7 +137,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['openUpdate'])
+const emit = defineEmits(['openUpdate', 'minimize'])
 
 const isMaximized = ref(false)
 
@@ -152,15 +152,7 @@ async function checkMaximized() {
 }
 
 async function handleMinimize() {
-  try {
-    if (window.go?.main?.App?.MinimizeWindow) {
-      await window.go.main.App.MinimizeWindow()
-    } else if (window.runtime?.WindowMinimise) {
-      window.runtime.WindowMinimise()
-    }
-  } catch (e) {
-    console.warn('Erro ao minimizar janela:', e)
-  }
+  emit('minimize')
 }
 
 async function handleToggleMaximize() {

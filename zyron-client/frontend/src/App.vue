@@ -20,6 +20,17 @@
     @expand-window="handleExpandWindow"
   />
 
+  <!-- MODO FLUTUANTE DO OPERADOR (Caixa flutuante sobreposta mostrando fila e sinal visual) -->
+  <FloatingQueueWidget
+    v-else-if="isFloatingMode && isOperator && !operatorInCall"
+    :queue="operatorQueue"
+    :is-accepting="isAcceptingTicket"
+    :has-new-request="hasNewSupportRequest"
+    @accept-ticket="handleAcceptTicket"
+    @expand-window="handleExpandWindow"
+    @minimize-window="handleMinimizeToTaskbar"
+  />
+
   <div v-else class="h-screen w-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden select-none">
     <!-- Header com Identificação do Usuário e Status -->
     <HeaderUser
@@ -34,6 +45,7 @@
       :update-available="updateAvailable"
       :latest-version="displayLatestVersion"
       @open-update="showUpdateModal = true"
+      @minimize="handleMinimizeWindow"
     />
 
     <!-- Notificação de Erro Global (se houver) -->
@@ -82,7 +94,9 @@
           v-else
           :queue="operatorQueue"
           :is-accepting="isAcceptingTicket"
+          :has-new-request="hasNewSupportRequest"
           @accept-ticket="handleAcceptTicket"
+          @enter-floating-mode="handleMinimizeWindow"
         />
       </template>
 
@@ -168,10 +182,11 @@ import ScreenViewer from './components/ScreenViewer.vue'
 import VoiceControls from './components/VoiceControls.vue'
 import EvaluationModal from './components/EvaluationModal.vue'
 import FloatingCallWidget from './components/FloatingCallWidget.vue'
+import FloatingQueueWidget from './components/FloatingQueueWidget.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import { wsService } from './services/ws'
 import { webrtcService } from './services/webrtc'
-import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, RestoreAndFocusWindow, SetFloatingMode, GetAppVersion, CheckForUpdate, UpdateLaserPointer, HideLaserPointer } from '../wailsjs/go/main/App'
+import { GetSystemInfo, GetConfig, CheckProfile, MinimizeWindow, MaximizeWindow, IsWindowMinimised, RestoreAndFocusWindow, SetFloatingMode, GetAppVersion, CheckForUpdate, UpdateLaserPointer, HideLaserPointer } from '../wailsjs/go/main/App'
 
 // Estado da Estação e Configurações
 const systemInfo = ref({
@@ -194,6 +209,7 @@ const activeOperatorName = ref('')
 const clientAudioRef = ref(null)
 const isAwaitingScreenPermission = ref(false)
 const isFloatingMode = ref(false)
+const isTotallyMinimized = ref(false)
 const showEvaluationModal = ref(false)
 const lastEvaluatedTicketId = ref('')
 const lastEvaluatedOperator = ref('')
@@ -229,6 +245,54 @@ const isAcceptingTicket = ref(false)
 const remoteVideoStream = ref(null)
 const remoteAudioStream = ref(null)
 const speakerVolume = ref(1.0)
+const hasNewSupportRequest = ref(false)
+let newRequestTimeout = null
+
+function triggerNewSupportVisualSignal() {
+  hasNewSupportRequest.value = true
+  if (newRequestTimeout) {
+    clearTimeout(newRequestTimeout)
+  }
+  newRequestTimeout = setTimeout(() => {
+    hasNewSupportRequest.value = false
+    newRequestTimeout = null
+  }, 10000)
+}
+
+async function handleNewCallArrival() {
+  let isMin = isTotallyMinimized.value
+  try {
+    if (typeof IsWindowMinimised === 'function') {
+      const minStatus = await IsWindowMinimised()
+      if (minStatus) isMin = true
+    } else if (window.go?.main?.App?.IsWindowMinimised) {
+      const minStatus = await window.go.main.App.IsWindowMinimised()
+      if (minStatus) isMin = true
+    } else if (window.runtime?.WindowIsMinimised) {
+      const minStatus = await window.runtime.WindowIsMinimised()
+      if (minStatus) isMin = true
+    }
+  } catch (e) {
+    console.warn('Erro ao verificar estado minimizado da janela:', e)
+  }
+
+  if (document.hidden || document.visibilityState === 'hidden') {
+    isMin = true
+  }
+
+  // Se a aplicação estiver totalmente minimizada na barra de tarefas, abre a caixa flutuante!
+  if (isMin) {
+    isTotallyMinimized.value = false
+    isFloatingMode.value = true
+    try {
+      if (window.go?.main?.App?.SetFloatingMode) {
+        await SetFloatingMode(true)
+      }
+    } catch (e) {
+      console.warn('Erro ao abrir caixa flutuante ao receber chamada:', e)
+    }
+  }
+}
 
 // Estado da Chamada / Sessão
 const isMuted = ref(false)
@@ -482,9 +546,24 @@ function setupWebSocket() {
   // Mensagens do Operador de Suporte
   wsService.on('queue_update', (msg) => {
     if (Array.isArray(msg.payload)) {
+      const prevLength = operatorQueue.value.length
+      const newLength = msg.payload.length
       operatorQueue.value = msg.payload
-      if (isAcceptingTicket.value && msg.payload.length === 0) {
+
+      if (isAcceptingTicket.value && newLength === 0) {
         isAcceptingTicket.value = false
+      }
+
+      // Se a quantidade de pessoas na fila aumentou, um cliente acabou de solicitar suporte!
+      if (newLength > prevLength && isOperator.value && !operatorInCall.value) {
+        triggerNewSupportVisualSignal()
+        handleNewCallArrival()
+      } else if (newLength === 0) {
+        hasNewSupportRequest.value = false
+        if (newRequestTimeout) {
+          clearTimeout(newRequestTimeout)
+          newRequestTimeout = null
+        }
       }
     }
   })
@@ -577,6 +656,37 @@ function setupWebSocket() {
       }
     } else {
       // OPERADOR: Servidor confirmou que você atendeu o chamado. Iniciar WebRTC receiver!
+      if (isFloatingMode.value) {
+        isFloatingMode.value = false
+        try {
+          if (window.go?.main?.App?.SetFloatingMode) {
+            await SetFloatingMode(false)
+          }
+        } catch (e) {
+          console.warn('Erro ao desativar modo flutuante:', e)
+        }
+      }
+
+      // Garante que o operador retorne para a tela cheia (maximizada) ao aceitar o atendimento
+      try {
+        if (window.go?.main?.App?.MaximizeWindow) {
+          await MaximizeWindow()
+        } else if (window.runtime?.WindowMaximise) {
+          window.runtime.WindowMaximise()
+        }
+        if (window.go?.main?.App?.RestoreAndFocusWindow) {
+          await RestoreAndFocusWindow()
+        }
+      } catch (e) {
+        console.warn('Erro ao restaurar tela cheia após aceite:', e)
+      }
+
+      hasNewSupportRequest.value = false
+      if (newRequestTimeout) {
+        clearTimeout(newRequestTimeout)
+        newRequestTimeout = null
+      }
+
       activeClient.value = p.client_user || ''
       activeClientName.value = p.client_name || p.client_user || activeClientName.value || ''
       activeClientIp.value = p.client_ip || ''
@@ -747,12 +857,40 @@ function finishActiveSession(noticeMsg) {
 
 // Ações de Janela Wails (Minimizar, Modo Flutuante e Restaurar)
 async function handleMinimizeWindow() {
+  if (isOperator.value && !operatorInCall.value) {
+    // Operador aguardando chamados: minimiza para caixa flutuante sobreposta mostrando a fila!
+    isFloatingMode.value = true
+    try {
+      if (window.go?.main?.App?.SetFloatingMode) {
+        await SetFloatingMode(true)
+      }
+    } catch (e) {
+      console.warn('Erro ao ativar modo flutuante do operador:', e)
+    }
+  } else {
+    // Cliente ou operador em atendimento: minimização normal
+    try {
+      if (window.go?.main?.App?.MinimizeWindow) {
+        await MinimizeWindow()
+      } else if (window.runtime?.WindowMinimise) {
+        window.runtime.WindowMinimise()
+      }
+    } catch (e) {
+      console.warn('Erro ao minimizar janela:', e)
+    }
+  }
+}
+
+async function handleMinimizeToTaskbar() {
+  isTotallyMinimized.value = true
   try {
     if (window.go?.main?.App?.MinimizeWindow) {
       await MinimizeWindow()
+    } else if (window.runtime?.WindowMinimise) {
+      window.runtime.WindowMinimise()
     }
   } catch (e) {
-    console.warn('Erro ao minimizar janela:', e)
+    console.warn('Erro ao minimizar para barra de tarefas:', e)
   }
 }
 
@@ -768,6 +906,7 @@ async function handleCompactWindow() {
 }
 
 async function handleExpandWindow() {
+  isTotallyMinimized.value = false
   isFloatingMode.value = false
   try {
     if (window.go?.main?.App?.SetFloatingMode) {
@@ -821,8 +960,34 @@ function handleCancelTicket() {
 }
 
 // Ações do Operador
-function handleAcceptTicket(ticket) {
+async function handleAcceptTicket(ticket) {
   isAcceptingTicket.value = true
+  hasNewSupportRequest.value = false
+  if (newRequestTimeout) {
+    clearTimeout(newRequestTimeout)
+    newRequestTimeout = null
+  }
+
+  // Se o operador estava na janela flutuante, retorna imediatamente para a tela cheia!
+  if (isFloatingMode.value) {
+    isFloatingMode.value = false
+    try {
+      if (window.go?.main?.App?.SetFloatingMode) {
+        await SetFloatingMode(false)
+      }
+      if (window.go?.main?.App?.MaximizeWindow) {
+        await MaximizeWindow()
+      } else if (window.runtime?.WindowMaximise) {
+        window.runtime.WindowMaximise()
+      }
+      if (window.go?.main?.App?.RestoreAndFocusWindow) {
+        await RestoreAndFocusWindow()
+      }
+    } catch (e) {
+      console.warn('Erro ao retornar para a tela cheia ao aceitar chamada:', e)
+    }
+  }
+
   const ticketId = ticket.id || ticket.ticket_id
   const clientUser = ticket.client_user
   activeClientName.value = ticket.client_name || ticket.client_user || ''
@@ -855,11 +1020,17 @@ function handleUpdateVolume(vol) {
   }
 }
 
+function handleWindowFocus() {
+  isTotallyMinimized.value = false
+}
+
 onMounted(() => {
   initializeApp()
+  window.addEventListener('focus', handleWindowFocus)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('focus', handleWindowFocus)
   finishActiveSession()
   wsService.disconnect()
 })

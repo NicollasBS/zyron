@@ -23,6 +23,10 @@ export function HideLaserPointer():Promise<void>;
 
 export function IsWindowMaximised():Promise<boolean>;
 
+export function IsWindowMinimised():Promise<boolean>;
+
+export function MaximizeWindow():Promise<void>;
+
 export function MinimizeWindow():Promise<void>;
 
 export function RestoreAndFocusWindow():Promise<void>;

@@ -195,12 +195,32 @@ func (a *App) ToggleMaximizeWindow() {
 	runtime.WindowToggleMaximise(a.ctx)
 }
 
+// MaximizeWindow maximiza a janela da aplicação (tela cheia)
+func (a *App) MaximizeWindow() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.WindowSetAlwaysOnTop(a.ctx, false)
+	runtime.WindowSetMinSize(a.ctx, 340, 220)
+	runtime.WindowUnminimise(a.ctx)
+	runtime.WindowShow(a.ctx)
+	runtime.WindowMaximise(a.ctx)
+}
+
 // IsWindowMaximised verifica se a janela está atualmente maximizada
 func (a *App) IsWindowMaximised() bool {
 	if a.ctx == nil {
 		return false
 	}
 	return runtime.WindowIsMaximised(a.ctx)
+}
+
+// IsWindowMinimised verifica se a janela está atualmente minimizada
+func (a *App) IsWindowMinimised() bool {
+	if a.ctx == nil {
+		return false
+	}
+	return runtime.WindowIsMinimised(a.ctx)
 }
 
 // CloseWindow encerra o aplicativo
@@ -227,6 +247,9 @@ func (a *App) SetFloatingMode(enable bool) {
 		return
 	}
 	if enable {
+		runtime.WindowUnminimise(a.ctx)
+		runtime.WindowUnmaximise(a.ctx)
+		runtime.WindowShow(a.ctx)
 		// Define o tamanho mínimo para permitir o widget compacto
 		runtime.WindowSetMinSize(a.ctx, 320, 200)
 		runtime.WindowSetSize(a.ctx, 380, 250)

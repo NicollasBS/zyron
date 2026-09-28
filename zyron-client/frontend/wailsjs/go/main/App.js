@@ -38,6 +38,14 @@ export function IsWindowMaximised() {
   return window['go']['main']['App']['IsWindowMaximised']();
 }
 
+export function IsWindowMinimised() {
+  return window['go']['main']['App']['IsWindowMinimised']();
+}
+
+export function MaximizeWindow() {
+  return window['go']['main']['App']['MaximizeWindow']();
+}
+
 export function MinimizeWindow() {
   return window['go']['main']['App']['MinimizeWindow']();
 }
