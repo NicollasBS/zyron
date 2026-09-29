@@ -231,83 +231,64 @@ export class WebRTCService {
   }
 
   /**
-   * Solicita captura de tela priorizando Tela Inteira (displaySurface: 'monitor').
-   * Se o usuário cancelar ou recusar, solicita repetidamente até o aceite ser feito.
+   * Solicita captura de tela ao usuário, priorizando por padrão a Tela Inteira (displaySurface: 'monitor').
    */
   async acquireScreenStream(onPromptRetry) {
-    let retryCount = 0
+    if (this.isAbortingCaller) return null
 
-    while (!this.isAbortingCaller) {
+    try {
+      console.log('[WebRTC] Solicitando captura de tela com preferência de Tela Inteira...')
+
+      let stream = null
       try {
-        console.log('[WebRTC] Solicitando captura de Tela Inteira...')
-
-        let stream = null
-        try {
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-              cursor: 'always',
-              displaySurface: 'monitor',
-              frameRate: { ideal: 30, max: 60 }
-            },
-            audio: false
-          })
-        } catch (optionsErr) {
-          // Fallback caso a versão do WebView2 não aceite displaySurface nas constraints de vídeo
-          if (optionsErr && (optionsErr.name === 'TypeError' || optionsErr.name === 'OverconstrainedError')) {
-            console.warn('[WebRTC] displaySurface não suportado nas constraints, tentando formato padrão:', optionsErr)
-            stream = await navigator.mediaDevices.getDisplayMedia({
-              video: {
-                cursor: 'always',
-                frameRate: { ideal: 30, max: 60 }
-              },
-              audio: false
-            })
-          } else {
-            throw optionsErr
-          }
+        // Solicita priorizando por padrão a aba de Tela Inteira (displaySurface: 'monitor') no diálogo do Windows
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always',
+            displaySurface: 'monitor',
+            frameRate: { ideal: 30, max: 60 }
+          },
+          audio: false,
+          selfBrowserSurface: 'exclude',
+          surfaceSwitching: 'include',
+          monitorTypeSurfaces: 'include',
+          preferCurrentTab: false
+        })
+      } catch (hintErr) {
+        // Se o usuário cancelou voluntariamente, propaga o cancelamento sem disparar novamente
+        if (hintErr.name === 'NotAllowedError' || hintErr.name === 'AbortError') {
+          throw hintErr
         }
-
-        if (this.isAbortingCaller) {
-          if (stream) {
-            stream.getTracks().forEach((t) => t.stop())
-          }
-          return null
-        }
-
-        const videoTrack = stream.getVideoTracks()[0]
-        if (videoTrack) {
-          const settings = videoTrack.getSettings ? videoTrack.getSettings() : {}
-          // Se o usuário selecionou uma janela individual ao invés de tela inteira
-          if (settings.displaySurface && settings.displaySurface !== 'monitor') {
-            console.warn('[WebRTC] Usuário selecionou janela/aplicativo em vez da Tela Inteira:', settings.displaySurface)
-            videoTrack.stop()
-            if (onPromptRetry) {
-              onPromptRetry('Atenção: Por favor, selecione a "Tela Inteira" na lista para continuar o atendimento.')
-            }
-            await new Promise((r) => setTimeout(r, 600))
-            continue
-          }
-        }
-
-        console.log('[WebRTC] Compartilhamento de tela inteira autorizado com sucesso.')
-        return stream
-      } catch (err) {
-        if (this.isAbortingCaller) {
-          return null
-        }
-
-        retryCount++
-        console.warn(`[WebRTC] Compartilhamento de tela recusado/cancelado (tentativa ${retryCount}). Solicitando novamente até o aceite...`, err)
-        if (onPromptRetry) {
-          onPromptRetry('O compartilhamento da tela inteira é obrigatório para o atendimento. Por favor, selecione "Tela Inteira" e clique em Compartilhar.')
-        }
-
-        // Aguarda 600ms antes de disparar o prompt novamente para a interface do Windows responder com suavidade
-        await new Promise((r) => setTimeout(r, 600))
+        console.warn('[WebRTC] Fallback para constraints padrão de captura:', hintErr)
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: 'always',
+            frameRate: { ideal: 30, max: 60 }
+          },
+          audio: false
+        })
       }
-    }
 
-    return null
+      if (this.isAbortingCaller) {
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop())
+        }
+        return null
+      }
+
+      console.log('[WebRTC] Compartilhamento de tela autorizado com sucesso.')
+      return stream
+    } catch (err) {
+      if (this.isAbortingCaller) {
+        return null
+      }
+
+      console.warn('[WebRTC] Compartilhamento de tela recusado ou cancelado:', err)
+      if (onPromptRetry) {
+        onPromptRetry('O compartilhamento de tela foi cancelado ou não autorizado.')
+      }
+      return null
+    }
   }
 
   /**
@@ -434,8 +415,8 @@ export class WebRTCService {
   async handleCandidate(candidate) {
     if (!this.peerConnection || !candidate) return
 
-    // Ignora pacotes de candidato nulos ou vazios
-    if (!candidate.candidate && typeof candidate === 'object' && !candidate.sdpMid && candidate.sdpMLineIndex === undefined) {
+    // Ignora candidato se for vazio ou de encerramento
+    if (!candidate.candidate || typeof candidate.candidate !== 'string' || candidate.candidate.trim() === '') {
       return
     }
 
@@ -447,17 +428,20 @@ export class WebRTCService {
     try {
       await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (err) {
-      console.error('[WebRTC] Falha ao adicionar ICE Candidate:', err)
+      console.warn('[WebRTC] Falha ao adicionar ICE Candidate:', err)
     }
   }
 
   async flushPendingCandidates() {
     while (this.pendingIceCandidates.length > 0) {
       const cand = this.pendingIceCandidates.shift()
+      if (!cand || !cand.candidate || typeof cand.candidate !== 'string' || cand.candidate.trim() === '') {
+        continue
+      }
       try {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand))
       } catch (err) {
-        console.error('[WebRTC] Falha ao processar ICE Candidate pendente:', err)
+        console.warn('[WebRTC] Falha ao processar ICE Candidate pendente:', err)
       }
     }
   }

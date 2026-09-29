@@ -36,6 +36,12 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "zyron-client-single-instance-lock-c8273641-5a21-4f1e",
+			OnSecondInstanceLaunch: func(secondInstanceData options.SecondInstanceData) {
+				app.RestoreAndFocusWindow()
+			},
+		},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
 			WindowIsTranslucent:               false,

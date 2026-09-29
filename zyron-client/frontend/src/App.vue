@@ -587,7 +587,13 @@ function setupWebSocket() {
 
     if (!isOperator.value) {
       // CLIENTE SOLICITANTE: O operador aceitou o chamado.
-      // 1. Restaura e foca a janela para o cliente autorizar a tela cheia
+      // Previne reentrância se o chamado já foi aceito ou a captura já estiver sendo iniciada
+      if (isAwaitingScreenPermission.value || clientTicketStatus.value === 'in_call') {
+        console.warn('[App] Chamado já em andamento ou aguardando permissão. Ignorando ticket_accepted duplicado.')
+        return
+      }
+
+      // 1. Restaura e foca a janela para o cliente autorizar o compartilhamento
       try {
         if (window.go?.main?.App?.RestoreAndFocusWindow) {
           await RestoreAndFocusWindow()
@@ -659,26 +665,25 @@ function setupWebSocket() {
       if (isFloatingMode.value) {
         isFloatingMode.value = false
         try {
-          if (window.go?.main?.App?.SetFloatingMode) {
-            await SetFloatingMode(false)
+          if (window.go?.main?.App?.RestoreFromFloatingToMaximized) {
+            await window.go.main.App.RestoreFromFloatingToMaximized()
+          } else if (window.go?.main?.App?.MaximizeWindow) {
+            await MaximizeWindow()
+          } else if (window.runtime?.WindowMaximise) {
+            window.runtime.WindowMaximise()
           }
         } catch (e) {
           console.warn('Erro ao desativar modo flutuante:', e)
         }
-      }
-
-      // Garante que o operador retorne para a tela cheia (maximizada) ao aceitar o atendimento
-      try {
-        if (window.go?.main?.App?.MaximizeWindow) {
-          await MaximizeWindow()
-        } else if (window.runtime?.WindowMaximise) {
-          window.runtime.WindowMaximise()
+      } else {
+        // Se já estava em modo normal, assegura maximização estável (sem piscar se já maximizado)
+        try {
+          if (window.go?.main?.App?.MaximizeWindow) {
+            await MaximizeWindow()
+          }
+        } catch (e) {
+          console.warn('Erro ao restaurar tela cheia após aceite:', e)
         }
-        if (window.go?.main?.App?.RestoreAndFocusWindow) {
-          await RestoreAndFocusWindow()
-        }
-      } catch (e) {
-        console.warn('Erro ao restaurar tela cheia após aceite:', e)
       }
 
       hasNewSupportRequest.value = false
@@ -961,6 +966,7 @@ function handleCancelTicket() {
 
 // Ações do Operador
 async function handleAcceptTicket(ticket) {
+  if (isAcceptingTicket.value) return
   isAcceptingTicket.value = true
   hasNewSupportRequest.value = false
   if (newRequestTimeout) {
@@ -968,20 +974,16 @@ async function handleAcceptTicket(ticket) {
     newRequestTimeout = null
   }
 
-  // Se o operador estava na janela flutuante, retorna imediatamente para a tela cheia!
+  // Se o operador estava na janela flutuante, retorna imediatamente para a tela cheia de forma direta
   if (isFloatingMode.value) {
     isFloatingMode.value = false
     try {
-      if (window.go?.main?.App?.SetFloatingMode) {
-        await SetFloatingMode(false)
-      }
-      if (window.go?.main?.App?.MaximizeWindow) {
+      if (window.go?.main?.App?.RestoreFromFloatingToMaximized) {
+        await window.go.main.App.RestoreFromFloatingToMaximized()
+      } else if (window.go?.main?.App?.MaximizeWindow) {
         await MaximizeWindow()
       } else if (window.runtime?.WindowMaximise) {
         window.runtime.WindowMaximise()
-      }
-      if (window.go?.main?.App?.RestoreAndFocusWindow) {
-        await RestoreAndFocusWindow()
       }
     } catch (e) {
       console.warn('Erro ao retornar para a tela cheia ao aceitar chamada:', e)
@@ -1027,6 +1029,15 @@ function handleWindowFocus() {
 onMounted(() => {
   initializeApp()
   window.addEventListener('focus', handleWindowFocus)
+
+  // Escuta evento do backend Go emitido quando outra instância é iniciada ou quando o foco deve ser restaurado
+  if (window.runtime?.EventsOn) {
+    window.runtime.EventsOn('restore-window', () => {
+      if (isFloatingMode.value) {
+        handleExpandWindow()
+      }
+    })
+  }
 })
 
 onUnmounted(() => {

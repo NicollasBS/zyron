@@ -31,6 +31,8 @@ export function MinimizeWindow():Promise<void>;
 
 export function RestoreAndFocusWindow():Promise<void>;
 
+export function RestoreFromFloatingToMaximized():Promise<void>;
+
 export function SetFloatingMode(arg1:boolean):Promise<void>;
 
 export function SetServerURL(arg1:string):Promise<boolean|string>;

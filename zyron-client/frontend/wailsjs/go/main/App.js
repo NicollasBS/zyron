@@ -54,6 +54,10 @@ export function RestoreAndFocusWindow() {
   return window['go']['main']['App']['RestoreAndFocusWindow']();
 }
 
+export function RestoreFromFloatingToMaximized() {
+  return window['go']['main']['App']['RestoreFromFloatingToMaximized']();
+}
+
 export function SetFloatingMode(arg1) {
   return window['go']['main']['App']['SetFloatingMode'](arg1);
 }

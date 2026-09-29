@@ -20,7 +20,8 @@ import (
 
 // App struct representa a instância da aplicação Wails
 type App struct {
-	ctx context.Context
+	ctx        context.Context
+	isFloating bool
 }
 
 // NewApp cria uma nova instância do App
@@ -195,16 +196,38 @@ func (a *App) ToggleMaximizeWindow() {
 	runtime.WindowToggleMaximise(a.ctx)
 }
 
-// MaximizeWindow maximiza a janela da aplicação (tela cheia)
+// MaximizeWindow maximiza a janela da aplicação (tela cheia) de forma estável e suave
 func (a *App) MaximizeWindow() {
 	if a.ctx == nil {
 		return
 	}
+	a.isFloating = false
 	runtime.WindowSetAlwaysOnTop(a.ctx, false)
 	runtime.WindowSetMinSize(a.ctx, 340, 220)
-	runtime.WindowUnminimise(a.ctx)
+	if runtime.WindowIsMinimised(a.ctx) {
+		runtime.WindowUnminimise(a.ctx)
+	}
 	runtime.WindowShow(a.ctx)
-	runtime.WindowMaximise(a.ctx)
+	if !runtime.WindowIsMaximised(a.ctx) {
+		runtime.WindowMaximise(a.ctx)
+	}
+}
+
+// RestoreFromFloatingToMaximized transita suavemente do modo flutuante direto para a tela cheia (maximizada)
+func (a *App) RestoreFromFloatingToMaximized() {
+	if a.ctx == nil {
+		return
+	}
+	a.isFloating = false
+	runtime.WindowSetAlwaysOnTop(a.ctx, false)
+	runtime.WindowSetMinSize(a.ctx, 340, 220)
+	if runtime.WindowIsMinimised(a.ctx) {
+		runtime.WindowUnminimise(a.ctx)
+	}
+	runtime.WindowShow(a.ctx)
+	if !runtime.WindowIsMaximised(a.ctx) {
+		runtime.WindowMaximise(a.ctx)
+	}
 }
 
 // IsWindowMaximised verifica se a janela está atualmente maximizada
@@ -231,14 +254,23 @@ func (a *App) CloseWindow() {
 	runtime.Quit(a.ctx)
 }
 
-// RestoreAndFocusWindow restaura a janela caso minimizada e a traz para o primeiro plano
+// RestoreAndFocusWindow restaura a janela caso minimizada e a traz para o primeiro plano temporariamente sem travar AlwaysOnTop
 func (a *App) RestoreAndFocusWindow() {
 	if a.ctx == nil {
 		return
 	}
-	runtime.WindowUnminimise(a.ctx)
+	runtime.EventsEmit(a.ctx, "restore-window")
+	if runtime.WindowIsMinimised(a.ctx) {
+		runtime.WindowUnminimise(a.ctx)
+	}
 	runtime.WindowShow(a.ctx)
 	runtime.WindowSetAlwaysOnTop(a.ctx, true)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		if !a.isFloating {
+			runtime.WindowSetAlwaysOnTop(a.ctx, false)
+		}
+	}()
 }
 
 // SetFloatingMode redimensiona e fixa a janela sobre as demais telas (estilo Google Meet)
@@ -246,6 +278,7 @@ func (a *App) SetFloatingMode(enable bool) {
 	if a.ctx == nil {
 		return
 	}
+	a.isFloating = enable
 	if enable {
 		runtime.WindowUnminimise(a.ctx)
 		runtime.WindowUnmaximise(a.ctx)

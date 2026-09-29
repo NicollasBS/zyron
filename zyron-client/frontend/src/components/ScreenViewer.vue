@@ -336,13 +336,18 @@ watch(
   () => props.videoStream,
   (stream) => {
     if (videoRef.value && stream) {
-      videoRef.value.srcObject = stream
+      if (videoRef.value.srcObject !== stream) {
+        videoRef.value.srcObject = stream
+      }
       hasVideo.value = true
       videoRef.value.play().catch((err) => {
         console.warn('Erro ao reproduzir stream de vídeo:', err)
       })
-    } else {
+    } else if (!stream) {
       hasVideo.value = false
+      if (videoRef.value) {
+        videoRef.value.srcObject = null
+      }
       if (isLaserActive.value) {
         isLaserActive.value = false
         localLaser.value.visible = false
@@ -357,10 +362,14 @@ watch(
   () => props.audioStream,
   (stream) => {
     if (audioRef.value && stream) {
-      audioRef.value.srcObject = stream
+      if (audioRef.value.srcObject !== stream) {
+        audioRef.value.srcObject = stream
+      }
       audioRef.value.play().catch((err) => {
         console.warn('Erro ao reproduzir áudio remoto:', err)
       })
+    } else if (!stream && audioRef.value) {
+      audioRef.value.srcObject = null
     }
   },
   { immediate: true }
