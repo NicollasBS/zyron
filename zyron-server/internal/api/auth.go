@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 	"zyron-server/internal/auth"
 )
 
@@ -17,7 +20,16 @@ type AuthResponse struct {
 	DisplayName string `json:"display_name"`
 }
 
-var DefaultADService auth.ADService
+type cachedProfile struct {
+	profile   *auth.UserProfile
+	expiresAt time.Time
+}
+
+var (
+	DefaultADService auth.ADService
+	profileCache     = make(map[string]cachedProfile)
+	profileCacheMu   sync.RWMutex
+)
 
 func init() {
 	DefaultADService = auth.NewLDAPService(nil)
@@ -46,10 +58,32 @@ func CheckProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Consulta o Active Directory para obter perfil completo e nome
-	profile, err := DefaultADService.GetUserProfile(req.Username)
-	if err != nil {
-		log.Printf("Aviso na consulta ao Active Directory para '%s': %v", req.Username, err)
+	usernameKey := strings.ToLower(strings.TrimSpace(req.Username))
+
+	// 1. Verifica no cache em memória para evitar chamadas de rede repetidas ao Active Directory
+	profileCacheMu.RLock()
+	cached, found := profileCache[usernameKey]
+	profileCacheMu.RUnlock()
+
+	var profile *auth.UserProfile
+	if found && time.Now().Before(cached.expiresAt) {
+		profile = cached.profile
+	} else {
+		// 2. Consulta o Active Directory se não estiver em cache
+		var err error
+		profile, err = DefaultADService.GetUserProfile(req.Username)
+		if err != nil {
+			log.Printf("Aviso na consulta ao Active Directory para '%s': %v", req.Username, err)
+		}
+
+		if profile != nil {
+			profileCacheMu.Lock()
+			profileCache[usernameKey] = cachedProfile{
+				profile:   profile,
+				expiresAt: time.Now().Add(15 * time.Minute),
+			}
+			profileCacheMu.Unlock()
+		}
 	}
 
 	var isOp bool

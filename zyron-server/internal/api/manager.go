@@ -303,7 +303,7 @@ func ManagerExportCSVHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte{0xEF, 0xBB, 0xBF})
 
 	// Cabeçalho CSV
-	_, _ = fmt.Fprintln(w, "Ticket ID;Data Início;Data Fim;Duração (Segundos);Duração Formatada;Usuário Solicitante;Nome Solicitante;IP Solicitante;Usuário Operador;Nome Operador;Avaliação (Estrelas);Comentário")
+	_, _ = fmt.Fprintln(w, "Ticket ID;Data Início;Data Fim;Tempo de Espera (Segundos);Tempo de Espera Formatado (TME);Duração (Segundos);Duração Formatada (TMA);Usuário Solicitante;Nome Solicitante;IP Solicitante;Usuário Operador;Nome Operador;Avaliação (Estrelas);Comentário")
 
 	for rows.Next() {
 		var s db.SupportSession
@@ -311,6 +311,7 @@ func ManagerExportCSVHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		waitFmt := fmt.Sprintf("%02d:%02d", s.WaitDurationSeconds/60, s.WaitDurationSeconds%60)
 		durationFmt := fmt.Sprintf("%02d:%02d", s.DurationSeconds/60, s.DurationSeconds%60)
 		feedbackClean := strings.ReplaceAll(s.Feedback, "\n", " ")
 		feedbackClean = strings.ReplaceAll(feedbackClean, ";", ",")
@@ -324,10 +325,12 @@ func ManagerExportCSVHandler(w http.ResponseWriter, r *http.Request) {
 			opName = s.OperatorUsername
 		}
 
-		_, _ = fmt.Fprintf(w, "%s;%s;%s;%d;%s;%s;%s;%s;%s;%s;%d;%s\n",
+		_, _ = fmt.Fprintf(w, "%s;%s;%s;%d;%s;%d;%s;%s;%s;%s;%s;%s;%d;%s\n",
 			s.TicketID,
 			s.StartTime.Format("02/01/2006 15:04:05"),
 			s.EndTime.Format("02/01/2006 15:04:05"),
+			s.WaitDurationSeconds,
+			waitFmt,
 			s.DurationSeconds,
 			durationFmt,
 			s.ClientUsername,

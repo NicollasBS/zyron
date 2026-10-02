@@ -49,7 +49,8 @@
           :class="{
             'bg-emerald-500 shadow-sm shadow-emerald-500/50 animate-pulse': connectionStatus === 'connected',
             'bg-amber-400 animate-ping': connectionStatus === 'connecting',
-            'bg-rose-500': connectionStatus === 'disconnected' || connectionStatus === 'error'
+            'bg-rose-500': connectionStatus === 'error' || (isOperator && connectionStatus === 'disconnected'),
+            'bg-emerald-400/80': !isOperator && connectionStatus === 'disconnected'
           }"
         ></span>
         <span class="text-slate-300 capitalize">
@@ -197,6 +198,9 @@ const displayLatestVersion = computed(() => {
 })
 
 const statusLabel = computed(() => {
+  if (!props.isOperator && (props.connectionStatus === 'disconnected' || props.connectionStatus === 'idle')) {
+    return 'Disponível'
+  }
   switch (props.connectionStatus) {
     case 'connected':
       return 'Conectado'

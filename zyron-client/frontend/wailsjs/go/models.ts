@@ -41,6 +41,70 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class TicketInfo {
+	    id: string;
+	    ticket_id?: string;
+	    client_user: string;
+	    client_name: string;
+	    hostname: string;
+	    ip: string;
+	    status: string;
+	    position: number;
+	    queue_position: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TicketInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.ticket_id = source["ticket_id"];
+	        this.client_user = source["client_user"];
+	        this.client_name = source["client_name"];
+	        this.hostname = source["hostname"];
+	        this.ip = source["ip"];
+	        this.status = source["status"];
+	        this.position = source["position"];
+	        this.queue_position = source["queue_position"];
+	    }
+	}
+	export class SupportResponse {
+	    success: boolean;
+	    ticket?: TicketInfo;
+	    position?: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SupportResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.ticket = this.convertValues(source["ticket"], TicketInfo);
+	        this.position = source["position"];
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

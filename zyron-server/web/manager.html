@@ -135,7 +135,7 @@
     <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6">
 
       <!-- ================= 1. CARDS DE KPI (MÉTRICAS PRINCIPAIS) ================= -->
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3.5">
         <!-- Card 1: Fila de Espera -->
         <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
@@ -176,7 +176,17 @@
           <div class="text-[11px] text-slate-400 mt-1" id="kpiTotalCallsCount">Total geral: 0</div>
         </div>
 
-        <!-- Card 5: Tempo Médio de Atendimento (TMA) -->
+        <!-- Card 5: Tempo Médio de Espera (TME) -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+            <span>TME Médio</span>
+            <span class="text-cyan-400">⏳</span>
+          </div>
+          <div class="text-3xl font-extrabold text-cyan-300 font-mono" id="kpiTME">00:00</div>
+          <div class="text-[11px] text-slate-400 mt-1">tempo de espera</div>
+        </div>
+
+        <!-- Card 6: Tempo Médio de Atendimento (TMA) -->
         <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span>TMA Médio</span>
@@ -186,7 +196,7 @@
           <div class="text-[11px] text-slate-400 mt-1">tempo de suporte</div>
         </div>
 
-        <!-- Card 6: Avaliação / Satisfação -->
+        <!-- Card 7: Avaliação / Satisfação -->
         <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span>Satisfação</span>
@@ -302,12 +312,13 @@
                   <th class="pb-2 font-medium">Solicitante</th>
                   <th class="pb-2 font-medium">Operador</th>
                   <th class="pb-2 font-medium">IP Cliente</th>
+                  <th class="pb-2 font-medium text-center">Tempo de Espera</th>
                   <th class="pb-2 font-medium text-right">Duração Atual</th>
                 </tr>
               </thead>
               <tbody id="activeSessionsTableBody" class="divide-y divide-slate-800/60">
                 <tr>
-                  <td colspan="5" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td>
+                  <td colspan="6" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td>
                 </tr>
               </tbody>
             </table>
@@ -367,6 +378,7 @@
                   <th class="pb-2 font-medium">Operador</th>
                   <th class="pb-2 font-medium">Usuário</th>
                   <th class="pb-2 font-medium text-center">Total de Chamados</th>
+                  <th class="pb-2 font-medium text-center">TME (Espera Média)</th>
                   <th class="pb-2 font-medium text-center">TMA (Tempo Médio)</th>
                   <th class="pb-2 font-medium text-center">Tempo Total</th>
                   <th class="pb-2 font-medium text-center">Avaliação Média</th>
@@ -374,7 +386,7 @@
               </thead>
               <tbody id="operatorPerformanceTableBody" class="divide-y divide-slate-800/60">
                 <tr>
-                  <td colspan="6" class="py-6 text-center text-slate-500">Nenhum dado registrado ainda.</td>
+                  <td colspan="7" class="py-6 text-center text-slate-500">Nenhum dado registrado ainda.</td>
                 </tr>
               </tbody>
             </table>
@@ -456,13 +468,14 @@
                   <th class="pb-2 font-medium">Solicitante</th>
                   <th class="pb-2 font-medium">Operador</th>
                   <th class="pb-2 font-medium">IP</th>
-                  <th class="pb-2 font-medium text-center">Duração</th>
+                  <th class="pb-2 font-medium text-center">Espera (TME)</th>
+                  <th class="pb-2 font-medium text-center">Duração (TMA)</th>
                   <th class="pb-2 font-medium text-center">Avaliação</th>
                 </tr>
               </thead>
               <tbody id="sessionsTableBody" class="divide-y divide-slate-800/60">
                 <tr>
-                  <td colspan="7" class="py-8 text-center text-slate-500">Carregando histórico de chamados...</td>
+                  <td colspan="8" class="py-8 text-center text-slate-500">Carregando histórico de chamados...</td>
                 </tr>
               </tbody>
             </table>
@@ -498,6 +511,7 @@
   <script>
     let activeTab = 'realtime';
     let refreshInterval = null;
+    let liveTimerInterval = null;
     let sessionsOffset = 0;
     const sessionsLimit = 25;
     let totalSessionsCount = 0;
@@ -519,6 +533,34 @@
         return `${String(h).padStart(2, '0')}:${String(remM).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
       }
       return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    // Atualização a cada 1 segundo dos cronômetros locais ao vivo (sem requisições HTTP adicionais)
+    function tickLiveTimers() {
+      const now = Date.now();
+      // 1. Fila de espera: atualiza tempo decorrido desde t.created_at
+      document.querySelectorAll('.live-wait-timer').forEach(el => {
+        const createdAt = el.getAttribute('data-created-at');
+        if (createdAt) {
+          const tTime = new Date(createdAt).getTime();
+          if (!isNaN(tTime)) {
+            const sec = Math.max(0, Math.floor((now - tTime) / 1000));
+            el.textContent = formatDuration(sec);
+          }
+        }
+      });
+
+      // 2. Chamadas em andamento: atualiza duração atual desde s.start_time
+      document.querySelectorAll('.live-call-timer').forEach(el => {
+        const startTime = el.getAttribute('data-start-time');
+        if (startTime) {
+          const sTime = new Date(startTime).getTime();
+          if (!isNaN(sTime)) {
+            const sec = Math.max(0, Math.floor((now - sTime) / 1000));
+            el.textContent = formatDuration(sec);
+          }
+        }
+      });
     }
 
     // Formata data ISO em DD/MM/AAAA HH:MM
@@ -587,7 +629,14 @@
     function showLogin() {
       document.getElementById('loginSection').classList.remove('hidden');
       document.getElementById('dashboardSection').classList.add('hidden');
-      if (refreshInterval) clearInterval(refreshInterval);
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+      if (liveTimerInterval) {
+        clearInterval(liveTimerInterval);
+        liveTimerInterval = null;
+      }
     }
 
     function showDashboard(user) {
@@ -598,6 +647,10 @@
       }
       loadRealtimeData();
       loadAnalyticsData(); // Carrega imediatamente os dados analíticos e TMA/satisfação
+
+      if (!liveTimerInterval) {
+        liveTimerInterval = setInterval(tickLiveTimers, 1000);
+      }
 
       if (!refreshInterval) {
         let tickCounter = 0;
@@ -715,7 +768,7 @@
                   <div class="text-[10px] text-slate-400 font-mono">${t.client_user}</div>
                 </td>
                 <td class="py-2.5 font-mono text-slate-400">${t.client_ip || '-'}</td>
-                <td class="py-2.5 text-right font-mono text-amber-300 font-semibold">${formatDuration(waitSec)}</td>
+                <td class="py-2.5 text-right font-mono text-amber-300 font-semibold live-wait-timer" data-created-at="${t.created_at || ''}">${formatDuration(waitSec)}</td>
               </tr>
             `;
           });
@@ -750,7 +803,7 @@
         // Tabela de Sessões Ativas
         const sessionsTable = document.getElementById('activeSessionsTableBody');
         if (activeSessions.length === 0) {
-          sessionsTable.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td></tr>';
+          sessionsTable.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500">Nenhum atendimento em andamento no momento.</td></tr>';
         } else {
           let html = '';
           activeSessions.forEach(s => {
@@ -766,11 +819,16 @@
                   <div class="text-[10px] text-slate-400 font-mono">${s.operator_username}</div>
                 </td>
                 <td class="py-2.5 font-mono text-slate-400">${s.client_ip || '-'}</td>
-                <td class="py-2.5 text-right font-mono text-emerald-400 font-bold">${formatDuration(s.duration_seconds)}</td>
+                <td class="py-2.5 text-center font-mono text-cyan-300 font-semibold">${formatDuration(s.wait_duration_seconds)}</td>
+                <td class="py-2.5 text-right font-mono text-emerald-400 font-bold live-call-timer" data-start-time="${s.start_time || ''}">${formatDuration(s.duration_seconds)}</td>
               </tr>
             `;
           });
           sessionsTable.innerHTML = html;
+        }
+
+        if (data.avg_queue_wait_seconds && document.getElementById('kpiTME').textContent === '00:00') {
+          document.getElementById('kpiTME').textContent = formatDuration(data.avg_queue_wait_seconds);
         }
 
         // Atualiza horário da última sincronização
@@ -795,6 +853,7 @@
         // Atualiza KPIs cumulativos
         document.getElementById('kpiTodayCallsCount').textContent = data.today_sessions || 0;
         document.getElementById('kpiTotalCallsCount').textContent = `Total geral: ${data.total_sessions || 0}`;
+        document.getElementById('kpiTME').textContent = formatDuration(data.avg_wait_seconds);
         document.getElementById('kpiTMA').textContent = formatDuration(data.avg_duration_seconds);
         document.getElementById('kpiAvgRating').textContent = (data.avg_rating || 0).toFixed(1);
         document.getElementById('kpiRatedCount').textContent = `${data.rated_calls_count || 0} avaliações`;
@@ -956,7 +1015,7 @@
     function renderOperatorPerformanceTable(operators) {
       const tbody = document.getElementById('operatorPerformanceTableBody');
       if (!operators || operators.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500">Nenhum operador com atendimentos concluídos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-500">Nenhum operador com atendimentos concluídos.</td></tr>';
         return;
       }
 
@@ -967,6 +1026,7 @@
             <td class="py-2.5 font-semibold text-white">${op.operator_display_name}</td>
             <td class="py-2.5 font-mono text-slate-400">${op.operator_username}</td>
             <td class="py-2.5 text-center font-bold text-indigo-400">${op.total_calls}</td>
+            <td class="py-2.5 text-center font-mono text-cyan-300 font-semibold">${formatDuration(op.avg_wait_seconds)}</td>
             <td class="py-2.5 text-center font-mono text-slate-300">${formatDuration(op.avg_duration_seconds)}</td>
             <td class="py-2.5 text-center font-mono text-slate-400">${formatDuration(op.total_duration_seconds)}</td>
             <td class="py-2.5 text-center font-bold text-amber-400">${op.avg_rating > 0 ? op.avg_rating.toFixed(1) + ' ★' : '-'}</td>
@@ -1008,7 +1068,7 @@
 
         const tbody = document.getElementById('sessionsTableBody');
         if (sessions.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500">Nenhum chamado encontrado com os filtros selecionados.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">Nenhum chamado encontrado com os filtros selecionados.</td></tr>';
         } else {
           let html = '';
           sessions.forEach(s => {
@@ -1025,6 +1085,7 @@
                   <div class="text-[10px] text-slate-500 font-mono">${s.operator_username}</div>
                 </td>
                 <td class="py-3 font-mono text-slate-400">${s.client_ip || '-'}</td>
+                <td class="py-3 text-center font-mono text-cyan-300 font-semibold">${formatDuration(s.wait_duration_seconds)}</td>
                 <td class="py-3 text-center font-mono font-bold text-slate-300">${formatDuration(s.duration_seconds)}</td>
                 <td class="py-3 text-center">${renderStars(s.rating)}</td>
               </tr>

@@ -180,6 +180,125 @@ func (a *App) CheckProfile(serverURL string, username string) CheckProfileRespon
 	}
 }
 
+// TicketInfo representa os dados do chamado retornado na solicitação
+type TicketInfo struct {
+	ID            string `json:"id"`
+	TicketID      string `json:"ticket_id,omitempty"`
+	ClientUser    string `json:"client_user"`
+	ClientName    string `json:"client_name"`
+	Hostname      string `json:"hostname"`
+	IP            string `json:"ip"`
+	Status        string `json:"status"`
+	Position      int    `json:"position"`
+	QueuePosition int    `json:"queue_position"`
+}
+
+// SupportResponse representa a resposta da solicitação HTTP de atendimento
+type SupportResponse struct {
+	Success  bool        `json:"success"`
+	Ticket   *TicketInfo `json:"ticket,omitempty"`
+	Position int         `json:"position,omitempty"`
+	Error    string      `json:"error,omitempty"`
+}
+
+// RequestSupport realiza a requisição HTTP única para entrar na fila de suporte diretamente pelo backend Go (sem limitações de CORS do WebView2)
+func (a *App) RequestSupport(serverURL, username, clientName, hostname, ip string) SupportResponse {
+	if strings.TrimSpace(serverURL) == "" {
+		serverURL = config.GetConfig().ServerURL
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	if strings.TrimSpace(username) == "" {
+		username = system.GetCurrentUser()
+	}
+
+	endpoint := fmt.Sprintf("%s/api/queue/request", serverURL)
+
+	reqPayload := map[string]string{
+		"username":    username,
+		"client_name": clientName,
+		"hostname":    hostname,
+		"ip":          ip,
+	}
+	payloadBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		return SupportResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Erro ao serializar requisição: %v", err),
+		}
+	}
+
+	httpClient := &http.Client{
+		Timeout: 8 * time.Second,
+	}
+
+	resp, err := httpClient.Post(endpoint, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return SupportResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Falha ao conectar com servidor (%s): %v", endpoint, err),
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return SupportResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Servidor retornou status %d: %s", resp.StatusCode, string(bodyBytes)),
+		}
+	}
+
+	var suppResp struct {
+		Success  bool        `json:"success"`
+		Ticket   *TicketInfo `json:"ticket"`
+		Position int         `json:"position"`
+		Error    string      `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&suppResp); err != nil {
+		return SupportResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Erro ao decodificar resposta do servidor: %v", err),
+		}
+	}
+
+	return SupportResponse{
+		Success:  suppResp.Success,
+		Ticket:   suppResp.Ticket,
+		Position: suppResp.Position,
+		Error:    suppResp.Error,
+	}
+}
+
+// CancelSupport cancela um chamado pendente via requisição HTTP nativa do backend Go
+func (a *App) CancelSupport(serverURL, username string) bool {
+	if strings.TrimSpace(serverURL) == "" {
+		serverURL = config.GetConfig().ServerURL
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	if strings.TrimSpace(username) == "" {
+		username = system.GetCurrentUser()
+	}
+
+	endpoint := fmt.Sprintf("%s/api/queue/cancel", serverURL)
+	reqPayload := map[string]string{
+		"username": username,
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := httpClient.Post(endpoint, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // MinimizeWindow minimiza a janela da aplicação
 func (a *App) MinimizeWindow() {
 	if a.ctx == nil {

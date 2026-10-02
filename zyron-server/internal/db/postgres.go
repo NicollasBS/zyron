@@ -29,6 +29,7 @@ type SupportSession struct {
 	StartTime           time.Time `gorm:"index" json:"start_time"`
 	EndTime             time.Time `json:"end_time"`
 	DurationSeconds     int64     `json:"duration_seconds"`
+	WaitDurationSeconds int64     `json:"wait_duration_seconds"`
 	Rating              int       `gorm:"index" json:"rating,omitempty"`
 	Feedback            string    `gorm:"type:text" json:"feedback,omitempty"`
 }
@@ -128,6 +129,10 @@ func InitPostgres() error {
 	var migrateErr error
 	migrateOnce.Do(func() {
 		migrateErr = DB.AutoMigrate(&SupportSession{})
+		if migrateErr != nil && (strings.Contains(migrateErr.Error(), "already exists") || strings.Contains(migrateErr.Error(), "42701")) {
+			log.Printf("Aviso no AutoMigrate (coluna/relação já existe): %v", migrateErr)
+			migrateErr = nil
+		}
 	})
 	if migrateErr != nil {
 		return fmt.Errorf("falha no AutoMigrate de SupportSession: %w", migrateErr)
@@ -223,6 +228,7 @@ type OperatorPerformance struct {
 	OperatorDisplayName  string  `json:"operator_display_name"`
 	TotalCalls           int64   `json:"total_calls"`
 	AvgDurationSeconds   int64   `json:"avg_duration_seconds"`
+	AvgWaitSeconds       int64   `json:"avg_wait_seconds"`
 	TotalDurationSeconds int64   `json:"total_duration_seconds"`
 	AvgRating            float64 `json:"avg_rating"`
 	RatedCallsCount      int64   `json:"rated_calls_count"`
@@ -233,6 +239,7 @@ type DailyStat struct {
 	Date               string `json:"date"`
 	TotalCalls         int64  `json:"total_calls"`
 	AvgDurationSeconds int64  `json:"avg_duration_seconds"`
+	AvgWaitSeconds     int64  `json:"avg_wait_seconds"`
 }
 
 // HourlyStat agrega volume de chamados por hora do dia (0 a 23).
@@ -246,6 +253,7 @@ type DashboardAnalytics struct {
 	TotalSessions      int64                 `json:"total_sessions"`
 	TodaySessions      int64                 `json:"today_sessions"`
 	AvgDurationSeconds int64                 `json:"avg_duration_seconds"`
+	AvgWaitSeconds     int64                 `json:"avg_wait_seconds"`
 	AvgRating          float64               `json:"avg_rating"`
 	RatedCallsCount    int64                 `json:"rated_calls_count"`
 	RatingCounts       map[int]int64         `json:"rating_counts"`
@@ -348,15 +356,17 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 		defer wg.Done()
 		type SummaryResult struct {
 			AvgDuration float64
+			AvgWait     float64
 			AvgRating   float64
 			RatedCount  int64
 		}
 		var summary SummaryResult
 		DB.Model(&SupportSession{}).Select(
-			"COALESCE(AVG(duration_seconds), 0) as avg_duration, COALESCE(AVG(CASE WHEN rating > 0 THEN rating ELSE NULL END), 0) as avg_rating, COUNT(CASE WHEN rating > 0 THEN 1 ELSE NULL END) as rated_count",
+			"COALESCE(AVG(duration_seconds), 0) as avg_duration, COALESCE(AVG(wait_duration_seconds), 0) as avg_wait, COALESCE(AVG(CASE WHEN rating > 0 THEN rating ELSE NULL END), 0) as avg_rating, COUNT(CASE WHEN rating > 0 THEN 1 ELSE NULL END) as rated_count",
 		).Scan(&summary)
 		mu.Lock()
 		analytics.AvgDurationSeconds = int64(summary.AvgDuration)
+		analytics.AvgWaitSeconds = int64(summary.AvgWait)
 		analytics.AvgRating = math.Round(summary.AvgRating*10) / 10
 		analytics.RatedCallsCount = summary.RatedCount
 		mu.Unlock()
@@ -388,6 +398,7 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 			OperatorDisplayName string
 			TotalCalls          int64
 			AvgDuration         float64
+			AvgWait             float64
 			TotalDuration       int64
 			AvgRating           float64
 			RatedCount          int64
@@ -398,6 +409,7 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 			 COALESCE(MAX(operator_display_name), operator_username) as operator_display_name,
 			 count(*) as total_calls,
 			 COALESCE(AVG(duration_seconds), 0) as avg_duration,
+			 COALESCE(AVG(wait_duration_seconds), 0) as avg_wait,
 			 COALESCE(SUM(duration_seconds), 0) as total_duration,
 			 COALESCE(AVG(CASE WHEN rating > 0 THEN rating ELSE NULL END), 0) as avg_rating,
 			 COUNT(CASE WHEN rating > 0 THEN 1 ELSE NULL END) as rated_count`,
@@ -414,6 +426,7 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 				OperatorDisplayName:  displayName,
 				TotalCalls:           og.TotalCalls,
 				AvgDurationSeconds:   int64(og.AvgDuration),
+				AvgWaitSeconds:       int64(og.AvgWait),
 				TotalDurationSeconds: og.TotalDuration,
 				AvgRating:            math.Round(og.AvgRating*10) / 10,
 				RatedCallsCount:      og.RatedCount,
@@ -432,10 +445,11 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 			DateStr     string
 			Count       int64
 			AvgDuration float64
+			AvgWait     float64
 		}
 		var dayGroups []DayGroup
 		DB.Model(&SupportSession{}).Where("start_time >= ?", fourteenDaysAgo).
-			Select("TO_CHAR(start_time, 'YYYY-MM-DD') as date_str, count(*) as count, COALESCE(AVG(duration_seconds), 0) as avg_duration").
+			Select("TO_CHAR(start_time, 'YYYY-MM-DD') as date_str, count(*) as count, COALESCE(AVG(duration_seconds), 0) as avg_duration, COALESCE(AVG(wait_duration_seconds), 0) as avg_wait").
 			Group("date_str").Order("date_str ASC").Scan(&dayGroups)
 
 		var daily []DailyStat
@@ -444,6 +458,7 @@ func computeDashboardAnalytics() (*DashboardAnalytics, error) {
 				Date:               dg.DateStr,
 				TotalCalls:         dg.Count,
 				AvgDurationSeconds: int64(dg.AvgDuration),
+				AvgWaitSeconds:     int64(dg.AvgWait),
 			})
 		}
 		mu.Lock()

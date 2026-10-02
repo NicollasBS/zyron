@@ -17,7 +17,7 @@ import (
 
 const (
 	PresencePrefix = "presence:"
-	PresenceTTL    = 60 * time.Second
+	PresenceTTL    = 90 * time.Second
 )
 
 var (
@@ -195,12 +195,17 @@ func PushTicket(ctx context.Context, ticket *models.Ticket) (*models.Ticket, int
 				pos := i + 1
 				existing.Position = pos
 				existing.QueuePosition = pos
+				updated := false
 				if existing.TicketID == "" {
 					existing.TicketID = existing.ID
+					updated = true
+				}
+				if existing.CreatedAt.IsZero() {
+					existing.CreatedAt = time.Now()
+					updated = true
 				}
 
 				// Atualiza hostname ou IP se fornecidos na nova requisição
-				updated := false
 				if ticket.Hostname != "" && ticket.Hostname != existing.Hostname {
 					existing.Hostname = ticket.Hostname
 					updated = true
@@ -234,6 +239,9 @@ func PushTicket(ctx context.Context, ticket *models.Ticket) (*models.Ticket, int
 	}
 	if ticket.Status == "" {
 		ticket.Status = "waiting"
+	}
+	if ticket.CreatedAt.IsZero() {
+		ticket.CreatedAt = time.Now()
 	}
 
 	pos := len(items) + 1

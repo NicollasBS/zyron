@@ -71,6 +71,9 @@ func main() {
 	// Endpoints REST
 	http.HandleFunc("/healthz", healthzHandler)
 	http.HandleFunc("/api/auth/check-profile", api.CheckProfileHandler)
+	http.HandleFunc("/api/queue/request", api.RequestSupportHandler(hub))
+	http.HandleFunc("/api/queue/cancel", api.CancelSupportHandler(hub))
+	http.HandleFunc("/api/queue/status", api.GetQueueStatusHandler())
 	http.HandleFunc("/api/session/rate", api.RateSessionHandler)
 	http.HandleFunc("/api/update/version", api.CheckUpdateHandler)
 	http.HandleFunc("/api/update/download", api.DownloadUpdateHandler)
@@ -132,7 +135,18 @@ func main() {
 	log.Printf("Servidor Central P2P rodando na porta %s", port)
 	log.Printf("Documentação Swagger disponível em: http://localhost%s/swagger/index.html", port)
 
-	if err := http.ListenAndServe(port, nil); err != nil {
+	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.DefaultServeMux.ServeHTTP(w, r)
+	})
+
+	if err := http.ListenAndServe(port, corsHandler); err != nil {
 		log.Fatal("Erro ao iniciar o servidor: ", err)
 	}
 }

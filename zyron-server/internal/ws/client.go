@@ -20,10 +20,10 @@ const (
 	writeWait = 10 * time.Second
 
 	// pongWait é o tempo limite de espera para recebimento de um pong do peer.
-	pongWait = 60 * time.Second
+	pongWait = 70 * time.Second
 
-	// pingPeriod é o intervalo de envio de pings para o peer (deve ser menor que pongWait).
-	pingPeriod = 5 * time.Second
+	// pingPeriod é o intervalo de envio de pings para o peer (30s para economizar rede).
+	pingPeriod = 30 * time.Second
 )
 
 var upgrader = websocket.Upgrader{

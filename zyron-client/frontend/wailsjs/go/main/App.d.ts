@@ -7,6 +7,8 @@ import {system} from '../models';
 
 export function ApplyUpdate(arg1:string,arg2:string,arg3:string):Promise<updater.UpdateApplyResult>;
 
+export function CancelSupport(arg1:string,arg2:string):Promise<boolean>;
+
 export function CheckForUpdate(arg1:string):Promise<updater.UpdateCheckResult>;
 
 export function CheckProfile(arg1:string,arg2:string):Promise<main.CheckProfileResponse>;
@@ -28,6 +30,8 @@ export function IsWindowMinimised():Promise<boolean>;
 export function MaximizeWindow():Promise<void>;
 
 export function MinimizeWindow():Promise<void>;
+
+export function RequestSupport(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.SupportResponse>;
 
 export function RestoreAndFocusWindow():Promise<void>;
 

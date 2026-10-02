@@ -185,12 +185,25 @@ export class WebRTCService {
         })
       }
 
-      // Configura transceiver de vídeo como 'sendonly' (cliente apenas transmite tela, não recebe vídeo do operador)
+      // Configura transceiver de vídeo como 'sendonly' com limite de bitrate (2.5 Mbps) e 30 fps
       const videoTransceiver = this.peerConnection.getTransceivers().find(
         (t) => (t.sender.track && t.sender.track.kind === 'video')
       )
       if (videoTransceiver) {
         videoTransceiver.direction = 'sendonly'
+        if (videoTransceiver.sender && typeof videoTransceiver.sender.getParameters === 'function') {
+          try {
+            const params = videoTransceiver.sender.getParameters()
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}]
+            }
+            params.encodings[0].maxBitrate = 2500000 // 2.5 Mbps cap
+            params.encodings[0].maxFramerate = 30
+            videoTransceiver.sender.setParameters(params)
+          } catch (e) {
+            console.warn('[WebRTC] Aviso ao limitar taxa de bitrate de vídeo:', e)
+          }
+        }
       }
 
       if (this.localAudioStream) {
@@ -246,7 +259,7 @@ export class WebRTCService {
           video: {
             cursor: 'always',
             displaySurface: 'monitor',
-            frameRate: { ideal: 30, max: 60 }
+            frameRate: { ideal: 15, max: 30 }
           },
           audio: false,
           selfBrowserSurface: 'exclude',
@@ -263,7 +276,7 @@ export class WebRTCService {
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: {
             cursor: 'always',
-            frameRate: { ideal: 30, max: 60 }
+            frameRate: { ideal: 15, max: 30 }
           },
           audio: false
         })

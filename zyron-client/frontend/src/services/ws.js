@@ -11,7 +11,7 @@ class WebSocketService {
     this.reconnectTimer = null
     this.pingTimer = null
     this.isConnected = false
-    this.shouldReconnect = true
+    this.shouldReconnect = false
     this.reconnectAttempts = 0
   }
 
@@ -142,7 +142,7 @@ class WebSocketService {
   }
 
   /**
-   * Inicia o envio periódico de pings para manter a conexão e presença ativas no Redis
+   * Inicia o envio periódico de pings para manter a conexão e presença ativas no Redis (45s para evitar tráfego desnecessário)
    */
   startPing() {
     this.stopPing()
@@ -150,7 +150,7 @@ class WebSocketService {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         this.send('ping', '')
       }
-    }, 15000)
+    }, 45000)
   }
 
   stopPing() {
@@ -161,7 +161,7 @@ class WebSocketService {
   }
 
   scheduleReconnect() {
-    if (this.reconnectTimer) return
+    if (!this.shouldReconnect || this.reconnectTimer) return
     this.reconnectAttempts++
     // Backoff progressivo: 2s, 3s, 5s... até no máximo 10s
     const delay = Math.min(2000 * Math.pow(1.3, this.reconnectAttempts - 1), 10000)

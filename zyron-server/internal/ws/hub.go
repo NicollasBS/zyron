@@ -16,13 +16,15 @@ import (
 
 // ActiveSession mantém o estado em memória da sessão de suporte P2P ativa.
 type ActiveSession struct {
-	TicketID         string
-	ClientUsername   string
-	ClientName       string
-	OperatorUsername string
-	OperatorName     string
-	ClientIP         string
-	StartTime        time.Time
+	TicketID            string
+	ClientUsername      string
+	ClientName          string
+	OperatorUsername    string
+	OperatorName        string
+	ClientIP            string
+	TicketCreatedAt     time.Time
+	WaitDurationSeconds int64
+	StartTime           time.Time
 }
 
 type Hub struct {
@@ -67,6 +69,22 @@ func (h *Hub) Register(c *Client) {
 			c.Send(models.WsMessage{
 				Type:    "queue_update",
 				Payload: queue,
+			})
+		}
+	} else {
+		// Se for cliente comum (conectando após a solicitação HTTP), envia sua posição atual na fila
+		pos, ticket, err := db.GetQueuePosition(context.Background(), c.Username)
+		if err == nil && ticket != nil {
+			ticket.Position = pos
+			ticket.QueuePosition = pos
+			if ticket.TicketID == "" {
+				ticket.TicketID = ticket.ID
+			}
+			c.Send(models.WsMessage{
+				Type:    "queue_position",
+				From:    "server",
+				To:      c.Username,
+				Payload: ticket,
 			})
 		}
 	}
@@ -144,14 +162,17 @@ func (h *Hub) Unregister(c *Client) {
 
 		endTime := time.Now()
 		record := &db.SupportSession{
-			ID:               uuid.New(),
-			TicketID:         session.TicketID,
-			ClientUsername:   session.ClientUsername,
-			OperatorUsername: session.OperatorUsername,
-			ClientIP:         session.ClientIP,
-			StartTime:        session.StartTime,
-			EndTime:          endTime,
-			DurationSeconds:  int64(endTime.Sub(session.StartTime).Seconds()),
+			ID:                  uuid.New(),
+			TicketID:            session.TicketID,
+			ClientUsername:      session.ClientUsername,
+			ClientDisplayName:   session.ClientName,
+			OperatorUsername:    session.OperatorUsername,
+			OperatorDisplayName: session.OperatorName,
+			ClientIP:            session.ClientIP,
+			StartTime:           session.StartTime,
+			EndTime:             endTime,
+			DurationSeconds:     int64(endTime.Sub(session.StartTime).Seconds()),
+			WaitDurationSeconds: session.WaitDurationSeconds,
 		}
 		if err := db.SaveSessionRecord(record); err != nil {
 			log.Printf("Erro ao salvar auditoria na desconexão abrupta: %v\n", err)
@@ -332,6 +353,7 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 			Hostname:   hostname,
 			IP:         ip,
 			Status:     "waiting",
+			CreatedAt:  time.Now(),
 		}
 
 		actualTicket, position, created, err := db.PushTicket(context.Background(), ticketToProcess)
@@ -570,15 +592,27 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 			operatorName = msg.From
 		}
 
+		waitDuration := int64(0)
+		ticketCreatedAt := time.Now()
+		if removedTicket != nil && !removedTicket.CreatedAt.IsZero() {
+			ticketCreatedAt = removedTicket.CreatedAt
+			waitDuration = int64(time.Since(removedTicket.CreatedAt).Seconds())
+			if waitDuration < 0 {
+				waitDuration = 0
+			}
+		}
+
 		// Associa o operador ao cliente em sessão ativa
 		session := &ActiveSession{
-			TicketID:         targetTicketID,
-			ClientUsername:   targetClient,
-			ClientName:       clientName,
-			OperatorUsername: msg.From,
-			OperatorName:     operatorName,
-			ClientIP:         targetIP,
-			StartTime:        time.Now(),
+			TicketID:            targetTicketID,
+			ClientUsername:      targetClient,
+			ClientName:          clientName,
+			OperatorUsername:    msg.From,
+			OperatorName:        operatorName,
+			ClientIP:            targetIP,
+			TicketCreatedAt:     ticketCreatedAt,
+			WaitDurationSeconds: waitDuration,
+			StartTime:           time.Now(),
 		}
 
 		h.activeSessions[targetClient] = session
@@ -590,7 +624,7 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 		}
 		h.mu.Unlock()
 
-		log.Printf("Operador %s (%s) aceitou chamado %s do cliente %s (%s) (IP: %s)\n", msg.From, operatorName, targetTicketID, targetClient, clientName, targetIP)
+		log.Printf("Operador %s (%s) aceitou chamado %s do cliente %s (%s) (IP: %s, Espera: %ds)\n", msg.From, operatorName, targetTicketID, targetClient, clientName, targetIP, waitDuration)
 
 		// Atualiza a fila para todos os operadores e notifica o avanço de posição aos clientes na fila
 		h.BroadcastQueueAndNotifyClients()
@@ -615,10 +649,11 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 			From: "server",
 			To:   msg.From,
 			Payload: map[string]interface{}{
-				"ticket_id":   targetTicketID,
-				"client_user": targetClient,
-				"client_name": clientName,
-				"client_ip":   targetIP,
+				"ticket_id":             targetTicketID,
+				"client_user":           targetClient,
+				"client_name":           clientName,
+				"client_ip":             targetIP,
+				"wait_duration_seconds": waitDuration,
 			},
 		}
 		if sender != nil {
@@ -676,6 +711,7 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 			record.ClientIP = session.ClientIP
 			record.StartTime = session.StartTime
 			record.DurationSeconds = int64(endTime.Sub(session.StartTime).Seconds())
+			record.WaitDurationSeconds = session.WaitDurationSeconds
 		}
 
 		// Se o payload contiver informações adicionais para o registro de auditoria
@@ -688,6 +724,9 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 			}
 			if opUser, ok := pMap["operator_username"].(string); ok && opUser != "" {
 				record.OperatorUsername = opUser
+			}
+			if wSec, ok := pMap["wait_duration_seconds"].(float64); ok && record.WaitDurationSeconds == 0 {
+				record.WaitDurationSeconds = int64(wSec)
 			}
 		}
 
@@ -892,6 +931,7 @@ func (h *Hub) RouteMessage(msg models.WsMessage, senderClient ...*Client) {
 // RealtimeStats agrega os dados em tempo real da fila, operadores e chamadas ativas.
 type RealtimeStats struct {
 	QueueLength           int                 `json:"queue_length"`
+	AvgQueueWaitSeconds   int64               `json:"avg_queue_wait_seconds"`
 	QueueTickets          []models.Ticket     `json:"queue_tickets"`
 	AvailableOperators    []OperatorInfo      `json:"available_operators"`
 	BusyOperators         []OperatorInfo      `json:"busy_operators"`
@@ -915,6 +955,7 @@ type ActiveSessionInfo struct {
 	ClientIP            string `json:"client_ip"`
 	StartTime           string `json:"start_time"`
 	DurationSeconds     int64  `json:"duration_seconds"`
+	WaitDurationSeconds int64  `json:"wait_duration_seconds"`
 }
 
 // GetRealtimeManagerStats compila os dados ao vivo do hub e fila Redis para o gerenciador.
@@ -993,12 +1034,28 @@ func (h *Hub) GetRealtimeManagerStats() (*RealtimeStats, error) {
 				ClientIP:            session.ClientIP,
 				StartTime:           session.StartTime.Format(time.RFC3339),
 				DurationSeconds:     duration,
+				WaitDurationSeconds: session.WaitDurationSeconds,
 			})
 		}
 	}
 
+	var totalQueueWait int64
+	for _, t := range queue {
+		if !t.CreatedAt.IsZero() {
+			w := int64(now.Sub(t.CreatedAt).Seconds())
+			if w > 0 {
+				totalQueueWait += w
+			}
+		}
+	}
+	avgQueueWait := int64(0)
+	if len(queue) > 0 {
+		avgQueueWait = totalQueueWait / int64(len(queue))
+	}
+
 	return &RealtimeStats{
 		QueueLength:           len(queue),
+		AvgQueueWaitSeconds:   avgQueueWait,
 		QueueTickets:          queue,
 		AvailableOperators:    availableOps,
 		BusyOperators:         busyOps,

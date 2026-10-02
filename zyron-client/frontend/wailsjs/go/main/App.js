@@ -6,6 +6,10 @@ export function ApplyUpdate(arg1, arg2, arg3) {
   return window['go']['main']['App']['ApplyUpdate'](arg1, arg2, arg3);
 }
 
+export function CancelSupport(arg1, arg2) {
+  return window['go']['main']['App']['CancelSupport'](arg1, arg2);
+}
+
 export function CheckForUpdate(arg1) {
   return window['go']['main']['App']['CheckForUpdate'](arg1);
 }
@@ -48,6 +52,10 @@ export function MaximizeWindow() {
 
 export function MinimizeWindow() {
   return window['go']['main']['App']['MinimizeWindow']();
+}
+
+export function RequestSupport(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RequestSupport'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function RestoreAndFocusWindow() {

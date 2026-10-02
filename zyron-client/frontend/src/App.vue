@@ -110,7 +110,7 @@
           :operator-name="activeOperatorName"
           :call-duration-seconds="callDuration"
           :is-muted="isMuted"
-          :is-connecting="wsStatus === 'connecting'"
+          :is-connecting="isRequestingSupport || wsStatus === 'connecting'"
           :is-awaiting-screen="isAwaitingScreenPermission"
           :audio-stream="remoteAudioStream"
           @request-support="handleRequestSupport"
@@ -202,6 +202,7 @@ const userDisplayName = ref('')
 
 // Estado do Cliente Solicitante
 const clientTicketStatus = ref('idle') // 'idle' | 'waiting' | 'in_call'
+const isRequestingSupport = ref(false)
 const clientQueuePosition = ref(0)
 const clientTicketId = ref('')
 const activeOperator = ref('')
@@ -458,7 +459,12 @@ async function initializeApp() {
     }
 
     // 3. Conexão WebSocket para sinalização e presença
-    setupWebSocket()
+    // ATENÇÃO: Apenas operadores se conectam ao WebSocket na inicialização!
+    // Clientes comuns iniciam desconectados para evitar sobrecarga de rede (~1100 terminais).
+    // O cliente comum fará 1 requisição HTTP ao solicitar suporte e só então conectará ao WS.
+    if (isOperator.value) {
+      setupWebSocket()
+    }
 
     // 4. Verificação de Atualização Automática
     checkAppUpdate()
@@ -531,6 +537,10 @@ function setupWebSocket() {
     if (p.status === 'not_in_queue') {
       clientTicketStatus.value = 'idle'
       clientQueuePosition.value = 0
+      clientTicketId.value = ''
+      if (!isOperator.value) {
+        wsService.disconnect()
+      }
     } else {
       clientQueuePosition.value = p.position || p.queue_position || 1
       clientTicketStatus.value = 'waiting'
@@ -541,6 +551,9 @@ function setupWebSocket() {
     clientTicketStatus.value = 'idle'
     clientQueuePosition.value = 0
     clientTicketId.value = ''
+    if (!isOperator.value) {
+      wsService.disconnect()
+    }
   })
 
   // Mensagens do Operador de Suporte
@@ -851,6 +864,11 @@ function finishActiveSession(noticeMsg) {
         console.warn(e)
       }
     }
+
+    // Se for cliente comum, desconecta o WebSocket ao finalizar o atendimento para zerar uso de rede
+    if (!isOperator.value) {
+      wsService.disconnect()
+    }
   }
 
   isMuted.value = false
@@ -950,18 +968,94 @@ async function handleSubmitRating(data) {
 }
 
 // Ações do Usuário Solicitante
-function handleRequestSupport() {
-  if (wsStatus.value !== 'connected') {
-    errorMessage.value = 'Servidor de sinalização desconectado. Verifique a URL do servidor.'
-    return
-  }
+async function handleRequestSupport() {
+  if (isRequestingSupport.value) return
+  isRequestingSupport.value = true
   errorMessage.value = ''
-  wsService.requestSupport(systemInfo.value.hostname, systemInfo.value.ip, userDisplayName.value)
+
+  try {
+    let data = null
+
+    // 1. Tenta chamada via backend Go nativo do Wails (imune a CORS e restrições de WebView2)
+    if (window.go?.main?.App?.RequestSupport) {
+      data = await window.go.main.App.RequestSupport(
+        serverUrl.value,
+        systemInfo.value.username,
+        userDisplayName.value,
+        systemInfo.value.hostname,
+        systemInfo.value.ip
+      )
+    } else {
+      // Fallback para desenvolvimento em navegador web padrão
+      const res = await fetch(`${serverUrl.value}/api/queue/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: systemInfo.value.username,
+          client_name: userDisplayName.value,
+          hostname: systemInfo.value.hostname,
+          ip: systemInfo.value.ip
+        })
+      })
+
+      if (!res.ok) {
+        const errText = await res.text()
+        errorMessage.value = `Erro ao solicitar atendimento: ${errText || res.statusText}`
+        return
+      }
+
+      data = await res.json()
+    }
+
+    if (!data || !data.success) {
+      errorMessage.value = data?.error || 'Erro ao entrar na fila de atendimento.'
+      return
+    }
+
+    const ticket = data.ticket || {}
+    clientTicketId.value = ticket.id || ticket.ticket_id || ''
+    clientQueuePosition.value = data.position || ticket.position || 1
+    clientTicketStatus.value = 'waiting'
+
+    // 2. APÓS a solicitação HTTP concluída com sucesso, conecta ao WebSocket para acompanhar a fila
+    setupWebSocket()
+  } catch (err) {
+    console.error('Erro na solicitação de suporte:', err)
+    errorMessage.value = `Falha na conexão com o servidor: ${err.message}`
+  } finally {
+    isRequestingSupport.value = false
+  }
 }
 
-function handleCancelTicket() {
+async function handleCancelTicket() {
+  try {
+    // Cancela o chamado via backend Go nativo ou HTTP
+    if (window.go?.main?.App?.CancelSupport) {
+      await window.go.main.App.CancelSupport(serverUrl.value, systemInfo.value.username)
+    } else {
+      await fetch(`${serverUrl.value}/api/queue/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: systemInfo.value.username
+        })
+      })
+    }
+  } catch (e) {
+    console.warn('Aviso ao cancelar chamado via HTTP:', e)
+  }
+
+  // Notifica também via WebSocket caso esteja conectado
   wsService.cancelSupport()
+
   clientTicketStatus.value = 'idle'
+  clientQueuePosition.value = 0
+  clientTicketId.value = ''
+
+  // Desconecta o WebSocket do cliente para zerar o tráfego de rede
+  if (!isOperator.value) {
+    wsService.disconnect()
+  }
 }
 
 // Ações do Operador
